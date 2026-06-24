@@ -1,0 +1,6 @@
+{
+  "name": "CivicOS",
+  "description": "An AI-powered civic intelligence platform that helps communities and authorities detect, verify, prioritize, predict, and resolve urban issues.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

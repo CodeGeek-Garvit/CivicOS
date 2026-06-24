@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "Issue": {
+      "title": "Issue",
+      "description": "Represents a civic issue reported by a citizen, analyzed by Gemini, and saved in the database.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the issue"
+        },
+        "issueType": {
+          "type": "string",
+          "description": "Classification category of the civic issue"
+        },
+        "title": {
+          "type": "string",
+          "description": "Descriptive, short title of the issue"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the issue from visual/voice analysis"
+        },
+        "severity": {
+          "type": "integer",
+          "description": "The severity score of the issue (1 to 10)"
+        },
+        "confidence": {
+          "type": "number",
+          "description": "The AI confidence level of the detection (0.0 to 1.0)"
+        },
+        "reasoning": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Bullets explaining the reasons for the classification and severity score"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Base64 string or public storage URL of the issue image"
+        },
+        "status": {
+          "type": "string",
+          "description": "Lifecycle state of the issue"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp of creation in ISO format"
+        }
+      },
+      "required": ["issueType", "title", "description", "severity", "confidence", "reasoning", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/issues/{issueId}": {
+      "schema": "Issue",
+      "description": "The global collection of reported civic issues."
+    }
+  }
+}
