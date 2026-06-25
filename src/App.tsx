@@ -143,6 +143,27 @@ export default function App() {
   const handleReportIssue = async () => {
     if (!analysisResult || !selectedImage) return;
 
+    console.log("\n==================================================");
+    console.log("🚩 [CIVICOS SAVE PIPELINE] Button Clicked");
+    console.log("🚩 [CIVICOS SAVE PIPELINE] Sending POST /api/issues/report");
+    
+    const payload = {
+      issue: {
+        ...analysisResult,
+        imageUrl: selectedImage
+      }
+    };
+
+    console.log("🚩 [CIVICOS SAVE PIPELINE] Request Payload:", {
+      issueType: payload.issue.issueType,
+      title: payload.issue.title,
+      severity: payload.issue.severity,
+      confidence: payload.issue.confidence,
+      hasImage: !!payload.issue.imageUrl,
+      imageLengthBytes: payload.issue.imageUrl ? payload.issue.imageUrl.length : 0
+    });
+    console.log("==================================================\n");
+
     setSaving(true);
     setError(null);
 
@@ -150,20 +171,21 @@ export default function App() {
       const response = await fetch("/api/issues/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          issue: {
-            ...analysisResult,
-            imageUrl: selectedImage
-          }
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to save. Status: ${response.status}`);
+      let responseData: any = null;
+      try {
+        responseData = await response.json();
+      } catch (e) {
+        // Ignore JSON parse error if body is not JSON
       }
 
-      const data = await response.json();
-      if (data.success) {
+      if (!response.ok) {
+        throw new Error(responseData?.error || `Failed to save. Status: ${response.status}`);
+      }
+
+      if (responseData && responseData.success) {
         setSaveSuccess(true);
         // Refresh the ledger
         fetchIssues();
@@ -174,9 +196,13 @@ export default function App() {
           setSaveSuccess(false);
         }, 3000);
       } else {
-        throw new Error(data.error || "Save operation failed.");
+        throw new Error(responseData?.error || "Save operation failed.");
       }
     } catch (err: any) {
+      console.error("\n==================================================");
+      console.error("❌ [CIVICOS SAVE PIPELINE] Front-end Catch: Save failed!");
+      console.error(`- Error Message: ${err.message || err}`);
+      console.error("==================================================\n");
       setError(err.message || "Failed to persist issue to Firestore.");
     } finally {
       setSaving(false);

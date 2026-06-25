@@ -4,7 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from "firebase/app";
-import { initializeFirestore, collection, getDocs, query, orderBy, doc, setDoc } from "firebase/firestore";
+import { initializeFirestore, collection, getDocs, query, orderBy, doc, setDoc, getDoc } from "firebase/firestore";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -370,20 +370,77 @@ app.post("/api/issues/report", async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  try {
-    if (isFirestoreAvailable && db) {
-      const docRef = doc(db, "issues", newIssue.id);
-      await setDoc(docRef, newIssue);
-      console.log(`Saved issue "${newIssue.id}" to Firestore successfully`);
-      return res.status(201).json({ success: true, issue: newIssue });
-    }
-  } catch (error) {
-    console.error("Failed to save to Firestore, falling back to in-memory store", error);
+  console.log("\n==================================================");
+  console.log("📥 [CIVICOS SAVE PIPELINE] Backend Request Received");
+  console.log(`- Time: ${new Date().toISOString()}`);
+  console.log(`- ID: ${newIssue.id}`);
+  console.log(`- Category: ${newIssue.issueType}`);
+  console.log(`- Title: ${newIssue.title}`);
+  console.log("==================================================\n");
+
+  if (!isFirestoreAvailable || !db) {
+    const errorMsg = "Firestore is not configured or unavailable.";
+    console.error("\n==================================================");
+    console.error("❌ [CIVICOS SAVE PIPELINE] Firestore Write Failed");
+    console.error(`- Reason: ${errorMsg}`);
+    console.error("==================================================\n");
+    return res.status(503).json({
+      success: false,
+      error: errorMsg
+    });
   }
 
-  // Backup in-memory write
-  inMemoryIssues.push(newIssue);
-  res.status(201).json({ success: true, issue: newIssue, isDemoMode: true });
+  try {
+    console.log("\n==================================================");
+    console.log("💾 [CIVICOS SAVE PIPELINE] Firestore Write Started");
+    console.log(`- Target Collection: issues`);
+    console.log(`- Firestore Document ID: ${newIssue.id}`);
+    console.log("==================================================\n");
+
+    const docRef = doc(db, "issues", newIssue.id);
+    await setDoc(docRef, newIssue);
+
+    console.log("\n==================================================");
+    console.log("✅ [CIVICOS SAVE PIPELINE] Firestore Write Successful");
+    console.log(`- Firestore Document ID: ${newIssue.id}`);
+    console.log("==================================================\n");
+
+    // Immediately fetch the document and verify that it exists
+    console.log("\n==================================================");
+    console.log("🔍 [CIVICOS SAVE PIPELINE] Verification: Fetching written document...");
+    console.log("==================================================\n");
+
+    const verifySnap = await getDoc(docRef);
+    if (verifySnap.exists()) {
+      const verifyData = verifySnap.data();
+      console.log("\n==================================================");
+      console.log("🏆 [CIVICOS SAVE PIPELINE] Verification Successful");
+      console.log(`- Document ID "${verifySnap.id}" verified in Firestore.`);
+      console.log(`- Fields Match: ${verifyData.title === newIssue.title && verifyData.issueType === newIssue.issueType ? "YES" : "NO"}`);
+      console.log("==================================================\n");
+      
+      return res.status(201).json({ 
+        success: true, 
+        issue: newIssue,
+        verifiedInFirestore: true,
+        firestorePath: `issues/${newIssue.id}`
+      });
+    } else {
+      throw new Error("Immediately-fetched document does not exist in Firestore after successful write.");
+    }
+
+  } catch (error: any) {
+    console.error("\n==================================================");
+    console.error("❌ [CIVICOS SAVE PIPELINE] Firestore Write Failed");
+    console.error(`- Firestore Document ID: ${newIssue.id}`);
+    console.error(`- Reason: ${error.message || error}`);
+    console.error("==================================================\n");
+
+    return res.status(500).json({
+      success: false,
+      error: `Firestore Write Failed: ${error.message || error}`
+    });
+  }
 });
 
 // Serve frontend assets
