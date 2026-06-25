@@ -3,26 +3,11 @@ import {
   Upload, Image as ImageIcon, Loader2, CheckCircle, 
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
   Activity, FileText, Database, Layers, Check, RefreshCw,
-  MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge
+  MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-
-interface GeminiAnalysis {
-  issueType: string;
-  title: string;
-  description: string;
-  severity: number;
-  confidence: number;
-  reasoning: string[];
-}
-
-interface SavedIssue extends GeminiAnalysis {
-  id: string;
-  imageUrl: string;
-  status: string;
-  createdAt: string;
-  isDemoMode?: boolean;
-}
+import MapDashboard from "./components/MapDashboard";
+import { GeminiAnalysis, SavedIssue } from "./types";
 
 export default function App() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -36,12 +21,65 @@ export default function App() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedIssuesList, setSavedIssuesList] = useState<SavedIssue[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  const [activeTab, setActiveTab] = useState<"map" | "reporter">("map");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load existing reports on mount
+  // Load existing reports on mount and set up Realtime Firestore Sync
   useEffect(() => {
-    fetchIssues();
+    let unsubscribe: (() => void) | undefined;
+
+    const setupRealtimeSync = async () => {
+      try {
+        const response = await fetch("/api/firebase-config");
+        if (!response.ok) {
+          throw new Error("Failed to fetch client Firebase configuration.");
+        }
+        const data = await response.json();
+        if (data.success && data.config) {
+          const { initializeApp, getApps, getApp } = await import("firebase/app");
+          const { getFirestore, collection, onSnapshot, query, orderBy } = await import("firebase/firestore");
+
+          let clientApp;
+          const apps = getApps();
+          const existingApp = apps.find(app => app.name === "civicos-client");
+          if (existingApp) {
+            clientApp = existingApp;
+          } else {
+            clientApp = initializeApp(data.config, "civicos-client");
+          }
+
+          const clientDb = getFirestore(clientApp, data.config.databaseId);
+          const q = query(collection(clientDb, "issues"), orderBy("createdAt", "desc"));
+
+          console.log("🔗 [CIVICOS REALTIME] Establishing Firestore snapshot listener...");
+          unsubscribe = onSnapshot(q, (snapshot) => {
+            const list: SavedIssue[] = [];
+            snapshot.forEach((doc) => {
+              list.push({ id: doc.id, ...(doc.data() as any) });
+            });
+            console.log(`🔗 [CIVICOS REALTIME] Received Firestore update. Retransmitting ${list.length} issues dynamically.`);
+            setSavedIssuesList(list);
+          }, (err) => {
+            console.error("🔗 [CIVICOS REALTIME] Firestore sync failed, falling back to HTTP polling:", err);
+            fetchIssues();
+          });
+        } else {
+          fetchIssues();
+        }
+      } catch (err) {
+        console.warn("🔗 [CIVICOS REALTIME] Realtime initialization failed, relying on ledger API polling:", err);
+        fetchIssues();
+      }
+    };
+
+    setupRealtimeSync();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const fetchIssues = async () => {
@@ -141,16 +179,39 @@ export default function App() {
 
   // Save validated result to Firestore
   const handleReportIssue = async () => {
-    if (!analysisResult || !selectedImage) return;
+    if (saving || !analysisResult || !selectedImage) return;
+
+    setSaving(true);
+    setError(null);
 
     console.log("\n==================================================");
     console.log("🚩 [CIVICOS SAVE PIPELINE] Button Clicked");
+    console.log("🚩 [CIVICOS SAVE PIPELINE] Acquiring current coordinates...");
+
+    let coords: { latitude: number; longitude: number } | null = null;
+    try {
+      if (navigator.geolocation) {
+        const getPos = () => new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000 });
+        });
+        const pos = await getPos();
+        coords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude
+        };
+        console.log("🚩 [CIVICOS GEOLOCATION] Acquired precise GPS coordinate of reporter:", coords);
+      }
+    } catch (geoErr) {
+      console.warn("🚩 [CIVICOS GEOLOCATION] GPS unavailable, falling back to Pune ward seeds:", geoErr);
+    }
+
     console.log("🚩 [CIVICOS SAVE PIPELINE] Sending POST /api/issues/report");
     
     const payload = {
       issue: {
         ...analysisResult,
-        imageUrl: selectedImage
+        imageUrl: selectedImage,
+        location: coords || undefined
       }
     };
 
@@ -160,12 +221,10 @@ export default function App() {
       severity: payload.issue.severity,
       confidence: payload.issue.confidence,
       hasImage: !!payload.issue.imageUrl,
-      imageLengthBytes: payload.issue.imageUrl ? payload.issue.imageUrl.length : 0
+      imageLengthBytes: payload.issue.imageUrl ? payload.issue.imageUrl.length : 0,
+      location: payload.issue.location
     });
     console.log("==================================================\n");
-
-    setSaving(true);
-    setError(null);
 
     try {
       const response = await fetch("/api/issues/report", {
@@ -253,10 +312,36 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-950 flex items-center gap-2">
-                CivicOS <span className="text-indigo-600 text-xs font-semibold px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-full">Sprint 1</span>
+                CivicOS <span className="text-indigo-600 text-xs font-semibold px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-full">Sprint 2 Ready</span>
               </h1>
               <p className="text-xs text-slate-500 font-medium">Autonomous Civic Intelligence Platform</p>
             </div>
+          </div>
+
+          {/* Segmented Tab Navigation Controls */}
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50" id="view-tabs-container">
+            <button
+              onClick={() => setActiveTab("map")}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
+                activeTab === "map"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <MapIcon className="h-4 w-4" />
+              <span>Geographic Intelligence Map</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("reporter")}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
+                activeTab === "reporter"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <AppWindow className="h-4 w-4" />
+              <span>AI Autonomous Intake Hub</span>
+            </button>
           </div>
           
           <div className="flex items-center space-x-2" id="system-status-container">
@@ -272,21 +357,31 @@ export default function App() {
       {/* Main Content Body */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         
-        {/* Sprint Overview Card */}
-        <div className="mb-8 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 rounded-2xl p-6 text-white shadow-xl shadow-slate-200" id="sprint-overview">
-          <div className="max-w-3xl">
-            <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-xs text-indigo-300 font-semibold mb-4">
-              <Sparkles className="h-3 w.5" /> Core Pipeline Activated
+        {activeTab === "map" ? (
+          /* SPRINT 2 CENTERPIECE: Map Dashboard view */
+          <MapDashboard 
+            issues={savedIssuesList} 
+            onRefresh={fetchIssues} 
+            isLoading={loadingList} 
+          />
+        ) : (
+          /* SPRINT 1: AI Autonomous Intake Hub view (Completely Preserved) */
+          <>
+            {/* Sprint Overview Card */}
+            <div className="mb-8 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 rounded-2xl p-6 text-white shadow-xl shadow-slate-200" id="sprint-overview">
+              <div className="max-w-3xl">
+                <div className="inline-flex items-center gap-1.5 bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-xs text-indigo-300 font-semibold mb-4">
+                  <Sparkles className="h-3 w.5" /> Core Pipeline Activated
+                </div>
+                <h2 className="text-2xl font-bold mb-2 tracking-tight">AI-Powered Multimodal Citizen Reporter</h2>
+                <p className="text-indigo-200 text-sm leading-relaxed">
+                  Upload photographic evidence of any public safety hazard or damaged local infrastructure. Our Gemini Vision Engine will instantly classify the problem category, assign an objective severity rating, compile rational reasoning points, and prepare a secure audit ledger record.
+                </p>
+              </div>
             </div>
-            <h2 className="text-2xl font-bold mb-2 tracking-tight">AI-Powered Multimodal Citizen Reporter</h2>
-            <p className="text-indigo-200 text-sm leading-relaxed">
-              Upload photographic evidence of any public safety hazard or damaged local infrastructure. Our Gemini Vision Engine will instantly classify the problem category, assign an objective severity rating, compile rational reasoning points, and prepare a secure audit ledger record.
-            </p>
-          </div>
-        </div>
 
-        {/* Workspace Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="pipeline-workspace">
+            {/* Workspace Columns */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="pipeline-workspace">
           
           {/* LEFT SIDE: Media Intake & Trigger Engine */}
           <div className="lg:col-span-5 space-y-6" id="left-workspace-column">
@@ -665,12 +760,14 @@ export default function App() {
           </div>
 
         </div>
+        </>
+        )}
 
       </main>
 
       {/* Styled Footer */}
       <footer className="mt-20 border-t border-slate-200 bg-white py-8 text-center" id="civicos-footer">
-        <p className="text-xs text-slate-400 font-mono">CivicOS System Core • v1.0.0 (Sprint 1 Production) • Connected to Firebase Firestore</p>
+        <p className="text-xs text-slate-400 font-mono">CivicOS System Core • v2.0.0 (Sprint 2 Realtime) • Connected to Firebase Firestore</p>
       </footer>
     </div>
   );
