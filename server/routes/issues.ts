@@ -5,6 +5,7 @@ import { computeTechnicalSeverity, computeDeterministicConfidence } from "../eng
 import { computeOperationalPriority } from "../engines/priorityEngine";
 import { getResponsibleDepartment } from "../engines/departmentEngine";
 import { getResponseSLA } from "../engines/slaEngine";
+import { computeCostOfInaction } from "../engines/costEngine";
 
 // Fallback logic representing a realistic perception engine response
 function getCategoryAwareFallbackPerception(fileName: string = "") {
@@ -302,6 +303,15 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       const responseSLA = getResponseSLA(priorityLevel);
       const analysisConfidence = computeDeterministicConfidence(perceptionData);
 
+      const tempAnalysisForCost = {
+        issueType: perceptionData.issueType || "other",
+        affectedAsset: perceptionData.affectedAsset || "other",
+        estimatedRepairType: perceptionData.estimatedRepairType || "inspect",
+        technicalSeverity: technicalSeverity,
+        perceptionData: perceptionData
+      };
+      const costOfInaction = computeCostOfInaction(tempAnalysisForCost);
+
       const analysis = {
         // Backward compatibility properties for the frontend
         issueType: perceptionData.issueType || "other",
@@ -321,7 +331,8 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
         responseSLA: responseSLA,
         responsibleDepartment: responsibleDepartment,
         affectedAsset: perceptionData.affectedAsset || "other",
-        estimatedRepairType: perceptionData.estimatedRepairType || "inspect"
+        estimatedRepairType: perceptionData.estimatedRepairType || "inspect",
+        costOfInaction: costOfInaction
       };
 
       console.log("\n✅ ==================================================");
@@ -474,6 +485,14 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       ? Number(issue.analysisConfidence)
       : computeDeterministicConfidence(basicPerception);
 
+    const costOfInaction = issue.costOfInaction || computeCostOfInaction({
+      issueType: issue.issueType || basicPerception.issueType || "other",
+      affectedAsset: issue.affectedAsset || basicPerception.affectedAsset || "other",
+      estimatedRepairType: issue.estimatedRepairType || basicPerception.estimatedRepairType || "inspect",
+      technicalSeverity: techSeverity,
+      perceptionData: basicPerception
+    });
+
     const newIssue = {
       id: issue.id || `issue_${Math.random().toString(36).substring(2, 11)}`,
       issueType: issue.issueType || basicPerception.issueType || "other",
@@ -505,7 +524,8 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       responseSLA,
       responsibleDepartment: responsibleDept,
       affectedAsset: issue.affectedAsset || basicPerception.affectedAsset || "other",
-      estimatedRepairType: issue.estimatedRepairType || basicPerception.estimatedRepairType || "inspect"
+      estimatedRepairType: issue.estimatedRepairType || basicPerception.estimatedRepairType || "inspect",
+      costOfInaction: costOfInaction
     };
 
     console.log("\n==================================================");

@@ -10,6 +10,28 @@ export interface GeminiAnalysis {
   severity: number;
   confidence: number;
   reasoning: string[];
+  isFallback?: boolean;
+  affectedAsset?: string;
+  estimatedRepairType?: string;
+  perceptionData?: {
+    issueType?: string;
+    affectedAsset?: string;
+    damageExtent?: string;
+    estimatedAffectedArea?: string;
+    [key: string]: any;
+  };
+  costOfInaction?: {
+    repairCostNow: number;
+    repairCost30Days: number;
+    repairCost90Days: number;
+    costIncrease30: number;
+    costIncrease90: number;
+    riskEscalation: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    estimatedCitizensAffected: number;
+    environmentalImpact: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    recommendedAction: string;
+    rationale: string;
+  };
   scores?: {
     safetyRisk: number;
     infrastructureDamage: number;

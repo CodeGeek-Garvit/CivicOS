@@ -3,7 +3,8 @@ import {
   Upload, Image as ImageIcon, Loader2, CheckCircle, 
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
   Activity, FileText, Database, Layers, Check, RefreshCw,
-  MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow
+  MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow,
+  Info, ChevronDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
@@ -37,6 +38,7 @@ export default function App() {
   } | null>(null);
   const [gpsStatus, setGpsStatus] = useState<"idle" | "requesting" | "success" | "denied" | "error">("idle");
   const [newlyUploadedIssueId, setNewlyUploadedIssueId] = useState<string | null>(null);
+  const [showMethodology, setShowMethodology] = useState<boolean>(false);
 
   const GOOGLE_MAPS_KEY =
     process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -624,143 +626,356 @@ export default function App() {
             <AnimatePresence mode="wait">
               {analysisResult ? (
                 <motion.div 
+                  key="analysis-workspace-container"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -15 }}
-                  className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"
-                  id="analysis-result-card"
+                  className="space-y-6"
+                  id="analysis-workspace-container"
                 >
-                  {/* Status Banner */}
-                  <div className={`px-6 py-4 flex items-center justify-between text-white ${analysisResult.isFallback ? "bg-rose-950" : "bg-indigo-900"}`} id="analysis-banner-header">
-                    <div className="flex items-center space-x-2">
-                      <Sparkles className={`h-5 w-5 ${analysisResult.isFallback ? "text-rose-400" : "text-indigo-300"}`} />
-                      <span className="text-xs font-bold uppercase tracking-widest text-slate-200">
-                        {analysisResult.isFallback ? "Local Diagnostic Backup" : "Gemini Structured Analysis"}
-                      </span>
-                    </div>
-                    {analysisResult.isFallback ? (
-                      <span className="text-[11px] font-extrabold bg-rose-500 text-white border border-rose-400 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm animate-pulse">
-                        <span className="h-2 w-2 rounded-full bg-white"></span>
-                        Fallback Analysis
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-extrabold bg-emerald-600 text-white border border-emerald-500 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm">
-                        <span className="h-2 w-2 rounded-full bg-emerald-200 animate-ping"></span>
-                        Gemini Analysis
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="p-6 space-y-6">
-                    {/* Header Details */}
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
-                        <span className={`text-xs font-bold px-3 py-1 border rounded-full uppercase tracking-wider ${getCategoryDetails(analysisResult.issueType).color}`}>
-                          {getCategoryDetails(analysisResult.issueType).label}
+                  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="analysis-result-card">
+                    {/* Status Banner */}
+                    <div className={`px-6 py-4 flex items-center justify-between text-white ${analysisResult.isFallback ? "bg-rose-950" : "bg-indigo-900"}`} id="analysis-banner-header">
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className={`h-5 w-5 ${analysisResult.isFallback ? "text-rose-400" : "text-indigo-300"}`} />
+                        <span className="text-xs font-bold uppercase tracking-widest text-slate-200">
+                          {analysisResult.isFallback ? "Local Diagnostic Backup" : "Gemini Structured Analysis"}
                         </span>
-                        <span className="text-xs font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full uppercase">
-                          Type: {analysisResult.issueType}
+                      </div>
+                      {analysisResult.isFallback ? (
+                        <span className="text-[11px] font-extrabold bg-rose-500 text-white border border-rose-400 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm animate-pulse">
+                          <span className="h-2 w-2 rounded-full bg-white"></span>
+                          Fallback Analysis
                         </span>
-                        {analysisResult.isFallback ? (
-                          <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full uppercase">
-                            Fallback Analysis
-                          </span>
-                        ) : (
-                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase">
-                            Gemini Analysis
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="text-2xl font-black tracking-tight text-slate-950 leading-tight">
-                        {analysisResult.title}
-                      </h3>
-                      <p className="text-slate-600 text-sm mt-3 leading-relaxed font-medium">
-                        {analysisResult.description}
-                      </p>
-                    </div>
-
-                    {/* Multi-Factor KPI Widgets */}
-                    <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-5">
-                      {/* Severity Scale */}
-                      <div className={`p-4 rounded-xl border flex flex-col justify-between ${getSeverityStyle(analysisResult.severity).border} ${getSeverityStyle(analysisResult.severity).bg}`}>
-                        <div className="flex items-center justify-between text-slate-500 mb-1">
-                          <span className="text-xs font-bold uppercase tracking-wider">Severity Rating</span>
-                          <TriangleAlert className={`h-4 w-4 ${getSeverityStyle(analysisResult.severity).text}`} />
-                        </div>
-                        <div>
-                          <span className={`text-3xl font-black tracking-tighter ${getSeverityStyle(analysisResult.severity).text}`}>
-                            {analysisResult.severity}
-                          </span>
-                          <span className="text-xs text-slate-500 font-bold"> / 10</span>
-                        </div>
-                        <p className={`text-[10px] font-extrabold uppercase mt-1 ${getSeverityStyle(analysisResult.severity).text}`}>
-                          {getSeverityStyle(analysisResult.severity).label}
-                        </p>
-                      </div>
-
-                      {/* Confidence Level */}
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between">
-                        <div className="flex items-center justify-between text-slate-500 mb-1">
-                          <span className="text-xs font-bold uppercase tracking-wider">Confidence Coefficient</span>
-                          <Gauge className="h-4 w-4 text-slate-500" />
-                        </div>
-                        <div>
-                          <span className="text-3xl font-black text-slate-900 tracking-tighter">
-                            {(analysisResult.confidence * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-extrabold uppercase mt-1">
-                          Precision Threshold Match
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Rationale Bullet Points */}
-                    <div className="border-t border-slate-100 pt-5">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">AI Diagnostic Evidence & Rationale</h4>
-                      <ul className="space-y-2.5">
-                        {analysisResult.reasoning.map((reason, index) => (
-                          <li key={index} className="flex items-start gap-2.5 text-sm text-slate-700 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                            <Check className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
-                            <span>{reason}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Save Submission Action */}
-                    <div className="border-t border-slate-100 pt-5">
-                      {saveSuccess ? (
-                        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3">
-                          <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
-                          <div>
-                            <p className="text-sm font-bold">Issue Saved to Secure Ledger</p>
-                            <p className="text-xs mt-0.5 text-emerald-600">Committed to Firestore collection `/issues` successfully.</p>
-                          </div>
-                        </div>
                       ) : (
-                        <button
-                          onClick={handleReportIssue}
-                          disabled={saving}
-                          className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold text-sm py-4 px-4 rounded-xl shadow-lg hover:bg-indigo-700 disabled:opacity-75 transition-all"
-                          id="btn-report-issue"
-                        >
-                          {saving ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              <span>Writing transaction to Firestore...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Database className="h-4 w-4" />
-                              <span>Commit & Register Issue to Firestore</span>
-                            </>
-                          )}
-                        </button>
+                        <span className="text-[11px] font-extrabold bg-emerald-600 text-white border border-emerald-500 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm">
+                          <span className="h-2 w-2 rounded-full bg-emerald-200 animate-ping"></span>
+                          Gemini Analysis
+                        </span>
                       )}
                     </div>
 
+                    <div className="p-6 space-y-6">
+                      {/* Header Details */}
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+                          <span className={`text-xs font-bold px-3 py-1 border rounded-full uppercase tracking-wider ${getCategoryDetails(analysisResult.issueType).color}`}>
+                            {getCategoryDetails(analysisResult.issueType).label}
+                          </span>
+                          <span className="text-xs font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full uppercase">
+                            Type: {analysisResult.issueType}
+                          </span>
+                          {analysisResult.isFallback ? (
+                            <span className="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full uppercase">
+                              Fallback Analysis
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full uppercase">
+                              Gemini Analysis
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-2xl font-black tracking-tight text-slate-950 leading-tight">
+                          {analysisResult.title}
+                        </h3>
+                        <p className="text-slate-600 text-sm mt-3 leading-relaxed font-medium">
+                          {analysisResult.description}
+                        </p>
+                      </div>
+
+                      {/* Multi-Factor KPI Widgets */}
+                      <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-5">
+                        {/* Severity Scale */}
+                        <div className={`p-4 rounded-xl border flex flex-col justify-between ${getSeverityStyle(analysisResult.severity).border} ${getSeverityStyle(analysisResult.severity).bg}`}>
+                          <div className="flex items-center justify-between text-slate-500 mb-1">
+                            <span className="text-xs font-bold uppercase tracking-wider">Severity Rating</span>
+                            <TriangleAlert className={`h-4 w-4 ${getSeverityStyle(analysisResult.severity).text}`} />
+                          </div>
+                          <div>
+                            <span className={`text-3xl font-black tracking-tighter ${getSeverityStyle(analysisResult.severity).text}`}>
+                              {analysisResult.severity}
+                            </span>
+                            <span className="text-xs text-slate-500 font-bold"> / 10</span>
+                          </div>
+                          <p className={`text-[10px] font-extrabold uppercase mt-1 ${getSeverityStyle(analysisResult.severity).text}`}>
+                            {getSeverityStyle(analysisResult.severity).label}
+                          </p>
+                        </div>
+
+                        {/* Confidence Level */}
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col justify-between">
+                          <div className="flex items-center justify-between text-slate-500 mb-1">
+                            <span className="text-xs font-bold uppercase tracking-wider">Confidence Coefficient</span>
+                            <Gauge className="h-4 w-4 text-slate-500" />
+                          </div>
+                          <div>
+                            <span className="text-3xl font-black text-slate-900 tracking-tighter">
+                              {(analysisResult.confidence * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-extrabold uppercase mt-1">
+                            Precision Threshold Match
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Rationale Bullet Points */}
+                      <div className="border-t border-slate-100 pt-5">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">AI Diagnostic Evidence & Rationale</h4>
+                        <ul className="space-y-2.5">
+                          {analysisResult.reasoning.map((reason, index) => (
+                            <li key={index} className="flex items-start gap-2.5 text-sm text-slate-700 font-medium bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                              <Check className="h-4 w-4 text-indigo-600 shrink-0 mt-0.5" />
+                              <span>{reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Save Submission Action */}
+                      <div className="border-t border-slate-100 pt-5">
+                        {saveSuccess ? (
+                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3">
+                            <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+                            <div>
+                              <p className="text-sm font-bold">Issue Saved to Secure Ledger</p>
+                              <p className="text-xs mt-0.5 text-emerald-600">Committed to Firestore collection `/issues` successfully.</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={handleReportIssue}
+                            disabled={saving}
+                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold text-sm py-4 px-4 rounded-xl shadow-lg hover:bg-indigo-700 disabled:opacity-75 transition-all"
+                            id="btn-report-issue"
+                          >
+                            {saving ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <span>Writing transaction to Firestore...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Database className="h-4 w-4" />
+                                <span>Commit & Register Issue to Firestore</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* COST OF INACTION CARD (Sprint 3) */}
+                  {(() => {
+                    const methodology = getCostMethodologyDetails(analysisResult);
+                    return (
+                      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6" id="cost-of-inaction-card">
+                        <div className="pb-4 border-b border-slate-100 space-y-2">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="bg-amber-50 text-amber-600 p-2 rounded-xl border border-amber-200/50">
+                              <TriangleAlert className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-1.5">
+                                ⚠ Cost of Inaction
+                              </h3>
+                              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mt-0.5">Municipal Financial & Safety Risk Audit</p>
+                            </div>
+                          </div>
+                          
+                          <div className="pt-1 pl-10">
+                            <button
+                              onClick={() => setShowMethodology(!showMethodology)}
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer transition-colors"
+                              id="btn-toggle-methodology"
+                              type="button"
+                            >
+                              <span>ⓘ How is this calculated?</span>
+                              <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${showMethodology ? "rotate-180" : ""}`} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Collapsible Methodology Panel */}
+                        <AnimatePresence initial={false}>
+                          {showMethodology && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2, ease: "easeInOut" }}
+                              className="overflow-hidden"
+                              id="methodology-panel-container"
+                            >
+                              <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-4 space-y-4 text-xs font-medium text-slate-700 leading-normal mb-2">
+                                <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                                  <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Cost Estimation Methodology</span>
+                                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full uppercase">
+                                    Rule Engine V1.0
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Base Repair Cost</span>
+                                    <span className="font-black text-slate-900 text-xs">₹{methodology.baseCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                    <span className="text-[9px] text-slate-500 block leading-tight">(derived from municipal asset category)</span>
+                                  </div>
+
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Asset Type</span>
+                                    <span className="font-bold text-slate-900 text-xs block">{methodology.assetLabel}</span>
+                                  </div>
+
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Damage Extent</span>
+                                    <span className="font-bold text-slate-900 text-xs block">{methodology.extentLabel}</span>
+                                  </div>
+
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Severity Rating</span>
+                                    <span className="font-black text-slate-900 text-xs block">{analysisResult.severity} / 10</span>
+                                  </div>
+
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Repair Multiplier</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.damageMultiplier.toFixed(1)}</span>
+                                  </div>
+
+                                  <div>
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">30-Day Deterioration Profile</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.decay30.toFixed(1)}</span>
+                                  </div>
+
+                                  <div className="col-span-2">
+                                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">90-Day Deterioration Profile</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.decay90.toFixed(1)}</span>
+                                  </div>
+                                </div>
+
+                                <div className="border-t border-slate-200/60 pt-2.5 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                                  <span>Estimated Using</span>
+                                  <span className="font-bold text-slate-800">Deterministic municipal models</span>
+                                </div>
+
+                                <div className="bg-white border border-slate-100 p-2.5 rounded-lg text-[10px] font-medium text-slate-500 leading-relaxed shadow-xs">
+                                  These estimates are generated using deterministic engineering models designed for municipal prioritization. They are intended to support planning and resource allocation rather than exact procurement quotations.
+                                </div>
+
+                                <div className="flex items-center gap-1.5 text-[9px] font-bold text-indigo-600 bg-indigo-50/50 p-2 rounded-md border border-indigo-100/50">
+                                  <ShieldAlert className="h-3 w-3 shrink-0" />
+                                  <span>Confidence Level: High (Deterministic Rule Engine)</span>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* The Cost Projection Timeline */}
+                        <div className="grid grid-cols-3 gap-4 bg-slate-50 border border-slate-100 rounded-xl p-4" id="cost-trajectory-panel">
+                          <div className="text-center space-y-1">
+                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block leading-tight">Repair Today</span>
+                            <div className="text-lg font-black text-slate-900 leading-none">
+                              ₹{analysisResult.costOfInaction?.repairCostNow?.toLocaleString("en-IN") || "4,500"}
+                            </div>
+                            <span className="text-[9px] font-semibold text-emerald-600 uppercase bg-emerald-50 border border-emerald-100/50 px-1.5 py-0.5 rounded-full inline-block mt-1">Base Cost</span>
+                          </div>
+
+                          <div className="text-center space-y-1 border-l border-slate-200">
+                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block leading-tight">After 30 Days</span>
+                            <div className="text-lg font-black text-amber-600 leading-none">
+                              ₹{analysisResult.costOfInaction?.repairCost30Days?.toLocaleString("en-IN") || "9,400"}
+                            </div>
+                            <span className="text-[9px] font-extrabold text-amber-700 uppercase bg-amber-50 border border-amber-100 px-1.5 py-0.5 rounded-full inline-block mt-1">
+                              +{analysisResult.costOfInaction?.costIncrease30 || "109"}%
+                            </span>
+                          </div>
+
+                          <div className="text-center space-y-1 border-l border-slate-200">
+                            <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block leading-tight">After 90 Days</span>
+                            <div className="text-lg font-black text-rose-600 leading-none">
+                              ₹{analysisResult.costOfInaction?.repairCost90Days?.toLocaleString("en-IN") || "24,800"}
+                            </div>
+                            <span className="text-[9px] font-extrabold text-rose-700 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-full inline-block mt-1 animate-pulse">
+                              +{analysisResult.costOfInaction?.costIncrease90 || "451"}%
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Key Metrics Grid */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="flex items-center gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                            <div className="h-8 w-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
+                              <ShieldAlert className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Risk Escalation</span>
+                              <span className={`text-xs font-black uppercase tracking-wider ${
+                                analysisResult.costOfInaction?.riskEscalation === "CRITICAL" ? "text-red-600" :
+                                analysisResult.costOfInaction?.riskEscalation === "HIGH" ? "text-amber-600" :
+                                "text-slate-700"
+                              }`}>
+                                {analysisResult.costOfInaction?.riskEscalation || "HIGH"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                            <div className="h-8 w-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                              <Activity className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Citizens Affected</span>
+                              <span className="text-xs font-black text-slate-700 uppercase">
+                                ~{analysisResult.costOfInaction?.estimatedCitizensAffected || "380"}/day
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                            <div className="h-8 w-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+                              <Gauge className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Environmental Impact</span>
+                              <span className={`text-xs font-black uppercase tracking-wider ${
+                                analysisResult.costOfInaction?.environmentalImpact === "CRITICAL" ? "text-red-600" :
+                                analysisResult.costOfInaction?.environmentalImpact === "HIGH" ? "text-emerald-600" :
+                                "text-slate-700"
+                              }`}>
+                                {analysisResult.costOfInaction?.environmentalImpact || "HIGH"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
+                            <div className="h-8 w-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 border border-slate-200">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Recommended Response</span>
+                              <span className="text-xs font-black text-slate-700 truncate block">
+                                {formatSLADisplay(analysisResult.responseSLA || "Schedule within 24 hours")}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs font-medium text-slate-700 leading-normal">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1 leading-none">Recommended Action</span>
+                          {analysisResult.costOfInaction?.recommendedAction || "Schedule within 24 hours to prevent rapid cost escalation."}
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-4">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5">Why?</span>
+                          <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                            {analysisResult.costOfInaction?.rationale || "Progressive pavement deterioration significantly increases future repair costs."}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </motion.div>
               ) : (
                 <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm" id="empty-analysis-container">
@@ -862,4 +1077,142 @@ export default function App() {
       </footer>
     </div>
   );
+}
+
+// Helper function to format SLA displays nicely for municipal officers
+function formatSLADisplay(sla: string): string {
+  if (!sla) return "Within 24 Hours";
+  if (/^within/i.test(sla)) {
+    return sla.charAt(0).toUpperCase() + sla.slice(1);
+  }
+  if (/hours|days/i.test(sla)) {
+    const capitalized = sla.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return `Within ${capitalized}`;
+  }
+  return sla;
+}
+
+// Reconstructed deterministic cost methodology details
+function getCostMethodologyDetails(analysisResult: any) {
+  if (!analysisResult) {
+    return {
+      category: "road",
+      minCost: 3000,
+      maxCost: 8000,
+      assetLabel: "Road Surface",
+      baseCost: 3000,
+      damageMultiplier: 1.5,
+      decay30: 2.1,
+      decay90: 5.8,
+      extentLabel: "Moderate"
+    };
+  }
+
+  const issueType = analysisResult.issueType || "";
+  const affectedAsset = analysisResult.affectedAsset || "";
+  const severity = analysisResult.severity || 5;
+  const extent = (analysisResult.perceptionData?.damageExtent || "moderate").toLowerCase();
+
+  const type = (issueType || "").toLowerCase();
+  const asset = (affectedAsset || "").toLowerCase();
+
+  let category = "road";
+  let minCost = 3000;
+  let maxCost = 8000;
+  let assetLabel = "Road Surface";
+
+  if (type.includes("streetlight") || asset.includes("streetlight")) {
+    category = "streetlight";
+    minCost = 4000;
+    maxCost = 6000;
+    assetLabel = "Streetlight / Lighting";
+  } else if (type.includes("electrical") || asset.includes("electrical") || type.includes("hazard") && (asset.includes("wire") || asset.includes("power"))) {
+    category = "electrical";
+    minCost = 8000;
+    maxCost = 20000;
+    assetLabel = "Electrical Infrastructure";
+  } else if (type.includes("pothole") || asset.includes("pavement") || type === "pothole") {
+    category = "road";
+    minCost = 3000;
+    maxCost = 8000;
+    assetLabel = "Road Surface (Pothole)";
+  } else if (type.includes("collapse") || type.includes("sinkhole")) {
+    category = "road";
+    minCost = 30000;
+    maxCost = 80000;
+    assetLabel = "Road Collapse / Sinkhole";
+  } else if (type.includes("footpath") || type.includes("sidewalk") || asset.includes("footpath")) {
+    category = "footpath";
+    minCost = 10000;
+    maxCost = 20000;
+    assetLabel = "Footpath / Sidewalk";
+  } else if (type.includes("water") || type.includes("leak") || asset.includes("water")) {
+    category = "water_pipe";
+    minCost = 12000;
+    maxCost = 30000;
+    assetLabel = "Water Pipe / Leakage";
+  } else if (type.includes("waste") || type.includes("garbage") || type.includes("dumping") || asset.includes("waste") || asset.includes("bin")) {
+    category = "waste_bin";
+    minCost = 4000;
+    maxCost = 12000;
+    assetLabel = "Waste / Garbage Bin";
+  } else if (type.includes("drain") || type.includes("sewer") || asset.includes("drain")) {
+    category = "drainage";
+    minCost = 15000;
+    maxCost = 35000;
+    assetLabel = "Drainage / Sewerage";
+  } else {
+    category = "road";
+    minCost = 5000;
+    maxCost = 15000;
+    assetLabel = "Municipal Infrastructure";
+  }
+
+  const severityFactor = Math.min(1.0, Math.max(0.0, (severity - 1) / 9));
+  const baseCost = minCost + (maxCost - minCost) * severityFactor;
+
+  let damageMultiplier = 1.5;
+  if (extent.includes("minor")) {
+    damageMultiplier = 1.0;
+  } else if (extent.includes("severe")) {
+    damageMultiplier = 2.2;
+  }
+
+  let decay30 = 2.1;
+  let decay90 = 5.8;
+
+  if (category === "streetlight") {
+    decay30 = 1.3;
+    decay90 = 2.8;
+  } else if (category === "electrical") {
+    decay30 = 1.8;
+    decay90 = 4.2;
+  } else if (category === "road") {
+    decay30 = 2.1;
+    decay90 = 5.8;
+  } else if (category === "water_pipe") {
+    decay30 = 3.2;
+    decay90 = 9.1;
+  } else if (category === "footpath") {
+    decay30 = 1.9;
+    decay90 = 4.6;
+  } else if (category === "waste_bin") {
+    decay30 = 2.8;
+    decay90 = 6.5;
+  } else if (category === "drainage") {
+    decay30 = 2.6;
+    decay90 = 7.2;
+  }
+
+  return {
+    category,
+    minCost,
+    maxCost,
+    assetLabel,
+    baseCost,
+    damageMultiplier,
+    decay30,
+    decay90,
+    extentLabel: extent.charAt(0).toUpperCase() + extent.slice(1)
+  };
 }
