@@ -39,15 +39,17 @@ export default function App() {
   const [newlyUploadedIssueId, setNewlyUploadedIssueId] = useState<string | null>(null);
 
   const GOOGLE_MAPS_KEY =
+    process.env.GOOGLE_MAPS_PLATFORM_KEY ||
     (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
     (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
     "";
 
   // Reverse Geocoding with Google Maps HTTP Geocode service
   const runReverseGeocoding = async (lat: number, lng: number) => {
-    let city = "City unavailable";
-    let state = "State unavailable";
-    let country = "Country unavailable";
+    let city = "Unavailable";
+    let state = "Unavailable";
+    let country = "Unavailable";
+    let isGeocoded = false;
 
     try {
       if (GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY !== "YOUR_API_KEY") {
@@ -66,30 +68,37 @@ export default function App() {
               country = comp.long_name;
             }
           }
-          if (!city || city === "City unavailable") {
+          if (!city || city === "Unavailable") {
             const subLoc = addressComponents.find((c: any) =>
               c.types.includes("sublocality") || c.types.includes("administrative_area_level_2")
             );
             if (subLoc) city = subLoc.long_name;
           }
-          console.log(`[CIVICOS GIS LOG] Geocoding success: ${city}, ${state}, ${country}`);
+          isGeocoded = true;
+          console.log(`[CIVICOS GIS LOG] ✓ Reverse geocoding successful: ${city}, ${state}, ${country}`);
         } else {
-          console.warn(`[CIVICOS GIS LOG] Geocoding failure: status ${data.status}`);
+          console.warn(`[CIVICOS GIS LOG] Reverse geocoding unavailable: status ${data.status}`);
         }
       } else {
-        console.warn("[CIVICOS GIS LOG] Geocoding failure: No Google Maps API Key available.");
+        console.warn("[CIVICOS GIS LOG] Reverse geocoding unavailable: No Google Maps API Key available.");
       }
     } catch (err) {
-      console.error("[CIVICOS GIS LOG] Geocoding failure:", err);
+      console.error("[CIVICOS GIS LOG] Reverse geocoding unavailable:", err);
+    }
+
+    if (!isGeocoded) {
+      console.log("[CIVICOS GIS LOG] ✓ GPS acquired");
+      console.log("[CIVICOS GIS LOG] ✓ Reverse geocoding unavailable");
+      console.log("[CIVICOS GIS LOG] ✓ Using GPS coordinates only");
     }
 
     setUserLocation({
       latitude: lat,
       longitude: lng,
-      city: city || "City unavailable",
-      state: state || "State unavailable",
-      country: country || "Country unavailable",
-      locationSource: (GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY !== "YOUR_API_KEY") ? "ReverseGeocoded" : "GPS"
+      city: city || "Unavailable",
+      state: state || "Unavailable",
+      country: country || "Unavailable",
+      locationSource: isGeocoded ? "ReverseGeocoded" : "GPS"
     });
   };
 

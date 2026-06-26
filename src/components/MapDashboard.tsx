@@ -396,12 +396,35 @@ function MapDashboardContent({
                 {isLiveMode ? "Live Mode Active" : "Demo Mode Active"}
               </span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-medium">Jurisdiction:</span>
-              <span className="font-bold text-slate-800 truncate max-w-[180px]">
-                {isLiveMode && userLocation ? `${userLocation.city}, ${userLocation.state}` : "Pune, Maharashtra"}
-              </span>
-            </div>
+            {isLiveMode && userLocation && (userLocation.city.toLowerCase().includes("unavailable") || userLocation.city.toLowerCase().includes("unknown")) ? (
+              <>
+                <div className="flex justify-between items-center border-b border-slate-100 pb-1.5">
+                  <span className="text-slate-500 font-medium">Jurisdiction:</span>
+                  <span className="font-extrabold text-emerald-600 text-[10px] uppercase tracking-wider">
+                    GPS Location Verified
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">City:</span>
+                  <span className="font-semibold text-slate-400">Unavailable</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">State:</span>
+                  <span className="font-semibold text-slate-400">Unavailable</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Country:</span>
+                  <span className="font-semibold text-slate-400">Unavailable</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Jurisdiction:</span>
+                <span className="font-bold text-slate-800 truncate max-w-[180px]">
+                  {isLiveMode && userLocation ? `${userLocation.city}, ${userLocation.state}` : "Pune, Maharashtra"}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-slate-500 font-medium">Coordinates:</span>
               <span className="font-mono text-[10px] text-slate-600">
