@@ -68,6 +68,91 @@ STRICT CONSERVATIVE RULES FOR FIELDS:
 - If uncertain, prefer FALSE.
 
 -----------------------------------------
+CRITICAL SCALE CALIBRATION & WASTE CLASSIFICATION RULES:
+-----------------------------------------
+1. GENERAL SCALE CALIBRATION (ALL ASSETS)
+- Estimate the REAL-WORLD MUNICIPAL FOOTPRINT, NOT the percentage of the image occupied by an object.
+- Large appearance in the camera frame DOES NOT imply large municipal impact.
+- Always classify based on the physical extent of the issue and the expected municipal response effort.
+- Estimate the actual municipal response required, not the visual prominence of the object in the photograph.
+- Examples:
+  • A crack filling most of a close-up photo may still be a minor crack.
+  • A close-up pothole should not automatically become a major road collapse.
+  • A zoomed-in damaged streetlight is still one damaged streetlight.
+
+2. WASTE / DUMPING CLASSIFICATION
+
+- "litter_single" (Single item / tiny footprint):
+  • One or two individual waste items, a single torn garbage bag, one small pile of litter.
+  • Localized footprint under approximately 1 m².
+  • Map to: issueType = "litter", estimatedScale = "small", estimatedAffectedArea = "small", and damageExtent = "minor".
+
+- "illegal_dumping_small" (Confined localized dumping):
+  • One localized waste accumulation, several garbage bags together, or household dumping.
+  • Footprint approximately 1–3 m².
+  • Clearly more than ordinary litter, but still confined to one location.
+  • Map to: issueType = "illegal_dumping", estimatedScale = "small" or "medium", estimatedAffectedArea = "small" or "medium".
+
+- "illegal_dumping_large" (Significant dumping - Assign ONLY if TWO OR MORE of the following are visible):
+  • Estimated affected area is large.
+  • Multiple separate dumping piles.
+  • Construction debris or demolition waste.
+  • Industrial or commercial waste.
+  • Large quantities of waste extending across a significant roadside area.
+  • Physical footprint exceeds roughly 10 m².
+  • A SINGLE waste pile must NEVER be classified as illegal_dumping_large simply because it fills most of the camera frame.
+  • Map to: issueType = "illegal_dumping", estimatedScale = "large", estimatedAffectedArea = "large".
+
+- "hazardous_waste":
+  • Only classify or flag as hazardous waste when hazardous materials are visibly present (chemical containers, medical waste, toxic substances, batteries, oil spills, etc.).
+
+4. ENGINEERING SUBTYPES DETERMINATION (Assign the most precise subtype based on real-world municipal response effort rather than camera framing/prominence. Set non-applicable subtype fields to "none".)
+
+- wasteSubtype:
+  • "none": Not a waste/dumping issue.
+  • "litter_single": One or two individual waste items, single torn garbage bag, one small pile of litter (localized footprint under ~1 m²).
+  • "litter_scattered": Scattered small loose trash/litter items across an area.
+  • "waste_bin_overflow": Overflowing trash can, municipal bin, or public waste receptacle.
+  • "illegal_dumping_small": One localized waste accumulation, several garbage bags together, or household dumping (footprint ~1–3 m²).
+  • "illegal_dumping_large": Significant dumping site with multiple separate dumping piles, construction/demolition debris, industrial/commercial waste, large quantities extending across roadside, footprint exceeding 10 m².
+  • "hazardous_waste": Visible chemical containers, medical waste, batteries, toxic substances, oil spills.
+
+- roadSubtype:
+  • "none": Not a road or pavement defect.
+  • "pothole_minor": Small, shallow pothole needing simple patch work.
+  • "pothole_major": Deep, large pothole with high impact risk to vehicles.
+  • "road_surface_damage": Surface cracking, ravelling, rutting, or general asphalt wear.
+  • "road_collapse": Substantial pavement collapse, sinkhole, or structural road failure.
+  • "footpath_crack_minor": Small crack or slight trip hazard on pedestrian sidewalk.
+  • "footpath_crack_major": Large cracked, raised, or displaced sidewalk tiles/slabs.
+  • "footpath_collapsed": Sidewalk structurally collapsed, caved in, or fully washed out.
+
+- waterSubtype:
+  • "none": Not a water or drainage issue.
+  • "water_leakage_minor": Small drip, minor wet patch, or slow leak.
+  • "water_leakage_major": Substantial flow, continuous pooling, or significant leak.
+  • "water_main_burst": Severe high-pressure spray, gushing water main rupture, or major street flooding from pipe burst.
+  • "drainage_blocked": Blocked storm drain, clogged sewer inlet, or stagnant water pooling over a drain.
+
+- electricalSubtype:
+  • "none": Not an electrical or lighting issue.
+  • "streetlight_outage": Dark/unlit streetlight at night or reported out.
+  • "streetlight_damaged": Physically broken pole, cracked fixture, or hanging street lamp component.
+  • "electrical_hazard": General wiring defect, open cabinet, or low-hanging cable.
+  • "electrical_exposed": Exposed live, sparking wires or open electrical conductors posing high electrocution risk.
+
+- structuralSubtype:
+  • "none": Not a structural wall/building hazard.
+  • "wall_crack_minor": Hairline or small surface cracks on walls or retaining structures.
+  • "wall_crack_major": Deep, wide, structural cracks or displacement in walls.
+  • "building_hazard": High risk structural defect on a building, overhang, awning, or scaffold posing danger of collapse.
+
+3. estimatedScale definitions (Map directly to the JSON field 'estimatedScale'):
+- "small": localized issue affecting < 2 m²
+- "medium": affects roughly 2–10 m²
+- "large": affects >10 m² or multiple separate dumping/defect locations
+
+-----------------------------------------
 STEP 1 — Identify the Issue
 -----------------------------------------
 Determine the single most appropriate issue category.
@@ -82,6 +167,7 @@ Allowed values:
 - road_damage
 - fallen_tree
 - traffic_signal_damage
+- litter
 - unknown
 
 If uncertain, choose the closest category.
@@ -142,7 +228,7 @@ export const visionPromptSchema = {
   properties: {
     issueType: {
       type: Type.STRING,
-      description: "Identify the single most appropriate issue category. Allowed values: pothole, waste_overflow, damaged_streetlight, water_leakage, infrastructure_damage, illegal_dumping, drainage_issue, road_damage, fallen_tree, traffic_signal_damage, unknown."
+      description: "Identify the single most appropriate issue category. Allowed values: pothole, waste_overflow, damaged_streetlight, water_leakage, infrastructure_damage, illegal_dumping, drainage_issue, road_damage, fallen_tree, traffic_signal_damage, litter, unknown."
     },
     title: {
       type: Type.STRING,
@@ -203,7 +289,7 @@ export const visionPromptSchema = {
     estimatedScale: {
       type: Type.STRING,
       enum: ["tiny", "small", "medium", "large", "massive"],
-      description: "Estimated scale of the issue."
+      description: "Estimated scale of the issue. Must be based on real-world municipal footprint, NEVER camera framing/coverage. 'small' refers to localized issue affecting < 2 m², 'medium' to roughly 2–10 m², and 'large' to > 10 m² or multiple dumping locations."
     },
     obstructionLevel: {
       type: Type.STRING,
@@ -275,6 +361,31 @@ export const visionPromptSchema = {
       type: Type.ARRAY,
       items: { type: Type.STRING },
       description: "Exactly 3 concise reasoning bullets referencing visible facts."
+    },
+    wasteSubtype: {
+      type: Type.STRING,
+      enum: ["none", "litter_single", "litter_scattered", "waste_bin_overflow", "illegal_dumping_small", "illegal_dumping_large", "hazardous_waste"],
+      description: "Optional engineering waste subtype. Choose based on municipal response effort, not camera framing. Use 'none' if not applicable."
+    },
+    roadSubtype: {
+      type: Type.STRING,
+      enum: ["none", "pothole_minor", "pothole_major", "road_surface_damage", "road_collapse", "footpath_crack_minor", "footpath_crack_major", "footpath_collapsed"],
+      description: "Optional engineering road/pavement subtype. Use 'none' if not applicable."
+    },
+    waterSubtype: {
+      type: Type.STRING,
+      enum: ["none", "water_leakage_minor", "water_leakage_major", "water_main_burst", "drainage_blocked"],
+      description: "Optional engineering water/drainage subtype. Use 'none' if not applicable."
+    },
+    electricalSubtype: {
+      type: Type.STRING,
+      enum: ["none", "streetlight_outage", "streetlight_damaged", "electrical_hazard", "electrical_exposed"],
+      description: "Optional engineering electrical/lighting subtype. Use 'none' if not applicable."
+    },
+    structuralSubtype: {
+      type: Type.STRING,
+      enum: ["none", "wall_crack_minor", "wall_crack_major", "building_hazard"],
+      description: "Optional engineering structural/wall/building subtype. Use 'none' if not applicable."
     }
   },
   required: [
@@ -307,6 +418,11 @@ export const visionPromptSchema = {
     "multipleIssuesDetected",
     "visibleObjects",
     "geminiConfidenceRaw",
-    "reasoning"
+    "reasoning",
+    "wasteSubtype",
+    "roadSubtype",
+    "waterSubtype",
+    "electricalSubtype",
+    "structuralSubtype"
   ]
 };

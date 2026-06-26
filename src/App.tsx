@@ -765,10 +765,18 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-
-                  {/* COST OF INACTION CARD (Sprint 3) */}
+                               {/* COST OF INACTION CARD (Sprint 3) */}
                   {(() => {
-                    const methodology = getCostMethodologyDetails(analysisResult);
+                    const costOfInaction = analysisResult?.costOfInaction || {};
+                    const baseCost = costOfInaction.baseCost !== undefined ? costOfInaction.baseCost : 3000;
+                    const minCost = costOfInaction.minCost !== undefined ? costOfInaction.minCost : 3000;
+                    const maxCost = costOfInaction.maxCost !== undefined ? costOfInaction.maxCost : 8000;
+                    const assetLabel = costOfInaction.assetLabel || "Municipal Infrastructure";
+                    const extentLabel = costOfInaction.extentLabel || "Moderate";
+                    const damageMultiplier = costOfInaction.damageMultiplier !== undefined ? costOfInaction.damageMultiplier : 1.5;
+                    const decay30 = costOfInaction.decay30 !== undefined ? costOfInaction.decay30 : 2.1;
+                    const decay90 = costOfInaction.decay90 !== undefined ? costOfInaction.decay90 : 5.8;
+
                     return (
                       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6" id="cost-of-inaction-card">
                         <div className="pb-4 border-b border-slate-100 space-y-2">
@@ -819,18 +827,18 @@ export default function App() {
                                 <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                                   <div>
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Base Repair Cost</span>
-                                    <span className="font-black text-slate-900 text-xs">₹{methodology.baseCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
-                                    <span className="text-[9px] text-slate-500 block leading-tight">(derived from municipal asset category)</span>
+                                    <span className="font-black text-slate-900 text-xs">₹{baseCost.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                                    <span className="text-[9px] text-slate-500 block leading-tight">(range: ₹{minCost.toLocaleString("en-IN")} - ₹{maxCost.toLocaleString("en-IN")})</span>
                                   </div>
 
                                   <div>
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Asset Type</span>
-                                    <span className="font-bold text-slate-900 text-xs block">{methodology.assetLabel}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">{assetLabel}</span>
                                   </div>
 
                                   <div>
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Damage Extent</span>
-                                    <span className="font-bold text-slate-900 text-xs block">{methodology.extentLabel}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">{extentLabel}</span>
                                   </div>
 
                                   <div>
@@ -840,17 +848,17 @@ export default function App() {
 
                                   <div>
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Repair Multiplier</span>
-                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.damageMultiplier.toFixed(1)}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{damageMultiplier.toFixed(1)}</span>
                                   </div>
 
                                   <div>
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">30-Day Deterioration Profile</span>
-                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.decay30.toFixed(1)}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{decay30.toFixed(1)}</span>
                                   </div>
 
                                   <div className="col-span-2">
                                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">90-Day Deterioration Profile</span>
-                                    <span className="font-bold text-slate-900 text-xs block">×{methodology.decay90.toFixed(1)}</span>
+                                    <span className="font-bold text-slate-900 text-xs block">×{decay90.toFixed(1)}</span>
                                   </div>
                                 </div>
 
@@ -1092,127 +1100,4 @@ function formatSLADisplay(sla: string): string {
   return sla;
 }
 
-// Reconstructed deterministic cost methodology details
-function getCostMethodologyDetails(analysisResult: any) {
-  if (!analysisResult) {
-    return {
-      category: "road",
-      minCost: 3000,
-      maxCost: 8000,
-      assetLabel: "Road Surface",
-      baseCost: 3000,
-      damageMultiplier: 1.5,
-      decay30: 2.1,
-      decay90: 5.8,
-      extentLabel: "Moderate"
-    };
-  }
 
-  const issueType = analysisResult.issueType || "";
-  const affectedAsset = analysisResult.affectedAsset || "";
-  const severity = analysisResult.severity || 5;
-  const extent = (analysisResult.perceptionData?.damageExtent || "moderate").toLowerCase();
-
-  const type = (issueType || "").toLowerCase();
-  const asset = (affectedAsset || "").toLowerCase();
-
-  let category = "road";
-  let minCost = 3000;
-  let maxCost = 8000;
-  let assetLabel = "Road Surface";
-
-  if (type.includes("streetlight") || asset.includes("streetlight")) {
-    category = "streetlight";
-    minCost = 4000;
-    maxCost = 6000;
-    assetLabel = "Streetlight / Lighting";
-  } else if (type.includes("electrical") || asset.includes("electrical") || type.includes("hazard") && (asset.includes("wire") || asset.includes("power"))) {
-    category = "electrical";
-    minCost = 8000;
-    maxCost = 20000;
-    assetLabel = "Electrical Infrastructure";
-  } else if (type.includes("pothole") || asset.includes("pavement") || type === "pothole") {
-    category = "road";
-    minCost = 3000;
-    maxCost = 8000;
-    assetLabel = "Road Surface (Pothole)";
-  } else if (type.includes("collapse") || type.includes("sinkhole")) {
-    category = "road";
-    minCost = 30000;
-    maxCost = 80000;
-    assetLabel = "Road Collapse / Sinkhole";
-  } else if (type.includes("footpath") || type.includes("sidewalk") || asset.includes("footpath")) {
-    category = "footpath";
-    minCost = 10000;
-    maxCost = 20000;
-    assetLabel = "Footpath / Sidewalk";
-  } else if (type.includes("water") || type.includes("leak") || asset.includes("water")) {
-    category = "water_pipe";
-    minCost = 12000;
-    maxCost = 30000;
-    assetLabel = "Water Pipe / Leakage";
-  } else if (type.includes("waste") || type.includes("garbage") || type.includes("dumping") || asset.includes("waste") || asset.includes("bin")) {
-    category = "waste_bin";
-    minCost = 4000;
-    maxCost = 12000;
-    assetLabel = "Waste / Garbage Bin";
-  } else if (type.includes("drain") || type.includes("sewer") || asset.includes("drain")) {
-    category = "drainage";
-    minCost = 15000;
-    maxCost = 35000;
-    assetLabel = "Drainage / Sewerage";
-  } else {
-    category = "road";
-    minCost = 5000;
-    maxCost = 15000;
-    assetLabel = "Municipal Infrastructure";
-  }
-
-  const severityFactor = Math.min(1.0, Math.max(0.0, (severity - 1) / 9));
-  const baseCost = minCost + (maxCost - minCost) * severityFactor;
-
-  let damageMultiplier = 1.5;
-  if (extent.includes("minor")) {
-    damageMultiplier = 1.0;
-  } else if (extent.includes("severe")) {
-    damageMultiplier = 2.2;
-  }
-
-  let decay30 = 2.1;
-  let decay90 = 5.8;
-
-  if (category === "streetlight") {
-    decay30 = 1.3;
-    decay90 = 2.8;
-  } else if (category === "electrical") {
-    decay30 = 1.8;
-    decay90 = 4.2;
-  } else if (category === "road") {
-    decay30 = 2.1;
-    decay90 = 5.8;
-  } else if (category === "water_pipe") {
-    decay30 = 3.2;
-    decay90 = 9.1;
-  } else if (category === "footpath") {
-    decay30 = 1.9;
-    decay90 = 4.6;
-  } else if (category === "waste_bin") {
-    decay30 = 2.8;
-    decay90 = 6.5;
-  } else if (category === "drainage") {
-    decay30 = 2.6;
-    decay90 = 7.2;
-  }
-
-  return {
-    category,
-    minCost,
-    maxCost,
-    assetLabel,
-    baseCost,
-    damageMultiplier,
-    decay30,
-    decay90,
-    extentLabel: extent.charAt(0).toUpperCase() + extent.slice(1)
-  };
-}

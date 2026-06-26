@@ -18,6 +18,11 @@ export interface GeminiAnalysis {
     affectedAsset?: string;
     damageExtent?: string;
     estimatedAffectedArea?: string;
+    wasteSubtype?: "none" | "litter_single" | "litter_scattered" | "waste_bin_overflow" | "illegal_dumping_small" | "illegal_dumping_large" | "hazardous_waste";
+    roadSubtype?: "none" | "pothole_minor" | "pothole_major" | "road_surface_damage" | "road_collapse" | "footpath_crack_minor" | "footpath_crack_major" | "footpath_collapsed";
+    waterSubtype?: "none" | "water_leakage_minor" | "water_leakage_major" | "water_main_burst" | "drainage_blocked";
+    electricalSubtype?: "none" | "streetlight_outage" | "streetlight_damaged" | "electrical_hazard" | "electrical_exposed";
+    structuralSubtype?: "none" | "wall_crack_minor" | "wall_crack_major" | "building_hazard";
     [key: string]: any;
   };
   costOfInaction?: {
@@ -31,6 +36,18 @@ export interface GeminiAnalysis {
     environmentalImpact: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
     recommendedAction: string;
     rationale: string;
+    // Methodology metadata
+    subtype?: string;
+    baseCost?: number;
+    damageMultiplier?: number;
+    decay30?: number;
+    decay90?: number;
+    minCost?: number;
+    maxCost?: number;
+    assetLabel?: string;
+    extentLabel?: string;
+    isCapped?: boolean;
+    capValue?: number;
   };
   scores?: {
     safetyRisk: number;

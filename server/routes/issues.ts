@@ -245,13 +245,48 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       if (isFirestoreAvailable && db) {
         const q = query(collection(db, "issues"), orderBy("createdAt", "desc"));
         const querySnapshot = await getDocs(q);
-        const issues = querySnapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        const issues = querySnapshot.docs.map((doc: any) => {
+          const data = doc.data();
+          let costOfInaction = data.costOfInaction;
+          if (!costOfInaction || !costOfInaction.baseCost) {
+            costOfInaction = computeCostOfInaction({
+              issueType: data.issueType || (data.perceptionData?.issueType) || "other",
+              affectedAsset: data.affectedAsset || (data.perceptionData?.affectedAsset) || "other",
+              estimatedRepairType: data.estimatedRepairType || (data.perceptionData?.estimatedRepairType) || "inspect",
+              technicalSeverity: data.severity || 5,
+              perceptionData: data.perceptionData || {
+                damageExtent: data.damageExtent || "moderate",
+                estimatedAffectedArea: data.estimatedAffectedArea || "medium"
+              },
+              title: data.title || "",
+              description: data.description || ""
+            });
+          }
+          return { id: doc.id, ...data, costOfInaction };
+        });
         return res.json({ success: true, issues });
       }
     } catch (error) {
       console.error("Failed to read from Firestore, returning in-memory store", error);
     }
-    const sortedInMemory = [...inMemoryIssues].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const sortedInMemory = [...inMemoryIssues].map(data => {
+      let costOfInaction = data.costOfInaction;
+      if (!costOfInaction || !costOfInaction.baseCost) {
+        costOfInaction = computeCostOfInaction({
+          issueType: data.issueType || (data.perceptionData?.issueType) || "other",
+          affectedAsset: data.affectedAsset || (data.perceptionData?.affectedAsset) || "other",
+          estimatedRepairType: data.estimatedRepairType || (data.perceptionData?.estimatedRepairType) || "inspect",
+          technicalSeverity: data.severity || 5,
+          perceptionData: data.perceptionData || {
+            damageExtent: data.damageExtent || "moderate",
+            estimatedAffectedArea: data.estimatedAffectedArea || "medium"
+          },
+          title: data.title || "",
+          description: data.description || ""
+        });
+      }
+      return { ...data, costOfInaction };
+    }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     res.json({ success: true, issues: sortedInMemory, isDemoMode: true });
   });
 
