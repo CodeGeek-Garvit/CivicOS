@@ -297,92 +297,126 @@ export interface ConfidenceInput {
 export function computeDeterministicConfidence(perceptionData: ConfidenceInput): number {
   console.log("\n🔒 --------------------------------------------------");
   console.log("🔒 [CONFIDENCE ENGINE] Calibrating Analysis Confidence...");
-  
-  let confidence = 0.98; // Baseline for clear images
-  const reductions: string[] = [];
 
-  // Evaluate factors and deduct confidence
-  if (perceptionData.lightingCondition === "poor_lighting") {
-    confidence -= 0.12;
-    reductions.push("-0.12 Poor Lighting Condition");
-  } else if (perceptionData.lightingCondition === "night") {
-    confidence -= 0.15;
-    reductions.push("-0.15 Nighttime Image Environment");
+  const rawConf = perceptionData.geminiConfidenceRaw !== undefined ? perceptionData.geminiConfidenceRaw : 0.85;
+
+  // Compute a continuous, natural variation factor (from 0.0 to 1.0) based on all visual parameters
+  let score = 0;
+  let maxScore = 0;
+
+  if (perceptionData.imageQuality === "high") { score += 3; }
+  else if (perceptionData.imageQuality === "medium") { score += 2; }
+  else { score += 1.5; } // Default / low
+  maxScore += 3;
+
+  if (perceptionData.lightingCondition === "good") { score += 3; }
+  else if (perceptionData.lightingCondition === "poor_lighting") { score += 1.5; }
+  else { score += 1; }
+  maxScore += 3;
+
+  if (perceptionData.visibility === "fully_visible") { score += 3; }
+  else if (perceptionData.visibility === "partially_occluded") { score += 2; }
+  else { score += 1; }
+  maxScore += 3;
+
+  if (perceptionData.motionBlur !== true) { score += 2; }
+  maxScore += 2;
+
+  if (perceptionData.complexScene !== true) { score += 2; }
+  maxScore += 2;
+
+  if (perceptionData.multipleIssuesDetected !== true) { score += 2; }
+  maxScore += 2;
+
+  if (perceptionData.cameraAngle === "optimal") { score += 3; }
+  else if (perceptionData.cameraAngle === "wide_angle") { score += 2.5; }
+  else if (perceptionData.cameraAngle === "steep_angle") { score += 2; }
+  else { score += 1; }
+  maxScore += 3;
+
+  if (perceptionData.estimatedScale === "massive" || perceptionData.estimatedScale === "large" || perceptionData.estimatedScale === "medium") {
+    score += 2;
+  } else if (perceptionData.estimatedScale === "small") {
+    score += 1.5;
+  } else {
+    score += 1;
+  }
+  maxScore += 2;
+
+  score += rawConf * 5;
+  maxScore += 5;
+
+  const variationFactor = score / maxScore; // continuous value roughly between 0.1 and 1.0
+
+  // Classify into specific confidence target ranges
+  let category = "";
+  let minRange = 0.55;
+  let maxRange = 0.70;
+
+  const isPoorLightingOrBlurOrPartialVisibility =
+    perceptionData.lightingCondition === "poor_lighting" ||
+    perceptionData.lightingCondition === "night" ||
+    perceptionData.motionBlur === true ||
+    perceptionData.visibility === "poor_visibility" ||
+    perceptionData.visibility === "partially_occluded" ||
+    perceptionData.imageQuality === "low";
+
+  const isModerateAmbiguity =
+    perceptionData.complexScene === true ||
+    perceptionData.multipleIssuesDetected === true ||
+    perceptionData.cameraAngle === "obstructed_angle" ||
+    perceptionData.cameraAngle === "steep_angle" ||
+    perceptionData.estimatedScale === "tiny" ||
+    rawConf < 0.75;
+
+  const isExceptionallyClearCloseUpUnambiguous =
+    perceptionData.imageQuality === "high" &&
+    perceptionData.visibility === "fully_visible" &&
+    perceptionData.lightingCondition === "good" &&
+    perceptionData.cameraAngle === "optimal" &&
+    perceptionData.motionBlur !== true &&
+    perceptionData.complexScene !== true &&
+    perceptionData.multipleIssuesDetected !== true &&
+    perceptionData.estimatedScale !== "tiny" &&
+    rawConf >= 0.94;
+
+  const isClearButOrdinary =
+    perceptionData.imageQuality === "medium" ||
+    rawConf < 0.88;
+
+  if (isPoorLightingOrBlurOrPartialVisibility) {
+    category = "Poor lighting / blur / partial visibility (55-70%)";
+    minRange = 0.55;
+    maxRange = 0.70;
+  } else if (isModerateAmbiguity) {
+    category = "Moderate ambiguity (65-80%)";
+    minRange = 0.65;
+    maxRange = 0.80;
+  } else if (isExceptionallyClearCloseUpUnambiguous) {
+    category = "Exceptionally clear, close-up, unambiguous (91-95%)";
+    minRange = 0.91;
+    maxRange = 0.95;
+  } else if (isClearButOrdinary) {
+    category = "Clear but ordinary image (75-85%)";
+    minRange = 0.75;
+    maxRange = 0.85;
+  } else {
+    // Very clear image (80-90%)
+    category = "Very clear image (80-90%)";
+    minRange = 0.80;
+    maxRange = 0.90;
   }
 
-  if (perceptionData.visibility === "poor_visibility") {
-    confidence -= 0.15;
-    reductions.push("-0.15 Poor Visibility / Deep Shadows");
-  } else if (perceptionData.visibility === "partially_occluded") {
-    confidence -= 0.08;
-    reductions.push("-0.08 Partially Occluded View");
-  }
+  // Calculate final interpolated confidence score
+  const finalConfidence = minRange + (maxRange - minRange) * variationFactor;
 
-  if (perceptionData.multipleIssuesDetected || perceptionData.complexScene) {
-    confidence -= 0.10;
-    reductions.push("-0.10 High Clutter or Multiple Issues Detected");
-  }
-
-  if (perceptionData.imageQuality === "low") {
-    confidence -= 0.15;
-    reductions.push("-0.15 Low Image Definition / Resolution");
-  } else if (perceptionData.imageQuality === "medium") {
-    confidence -= 0.05;
-    reductions.push("-0.05 Standard (Non-HD) Quality");
-  }
-
-  if (perceptionData.cameraAngle === "obstructed_angle") {
-    confidence -= 0.10;
-    reductions.push("-0.10 Highly Obstructed Photographic Angle");
-  } else if (perceptionData.cameraAngle === "steep_angle" || perceptionData.cameraAngle === "wide_angle") {
-    confidence -= 0.05;
-    reductions.push("-0.05 Suboptimal Camera Perspective");
-  }
-
-  if (perceptionData.motionBlur) {
-    confidence -= 0.12;
-    reductions.push("-0.12 Detected Motion Blur");
-  }
-
-  if (perceptionData.estimatedScale === "tiny") {
-    confidence -= 0.08;
-    reductions.push("-0.08 High Distance / Tiny Object Profile");
-  }
-
-  // Incorporate raw Gemini model certainty
-  const rawConf = perceptionData.geminiConfidenceRaw !== undefined ? perceptionData.geminiConfidenceRaw : 1.0;
-  if (rawConf < 0.70) {
-    confidence -= 0.10;
-    reductions.push("-0.10 Extremely Low Gemini Internal Certainty");
-  } else if (rawConf < 0.85) {
-    confidence -= 0.05;
-    reductions.push("-0.05 Moderate Gemini Internal Certainty");
-  }
-
-  // Allow exceptionally clear perfect images to go up to 0.99 or 1.0
-  let finalConfidence = confidence;
-  if (reductions.length === 0 && rawConf >= 0.95 && perceptionData.imageQuality === "high") {
-    finalConfidence = 0.99;
-  }
-
-  // Constrain between 65% (0.65) and 98%/99%
-  if (finalConfidence < 0.65) {
-    finalConfidence = 0.65;
-    reductions.push("Confidence floor hard-limit (0.65) triggered");
-  }
-
+  // Round to 2 decimal places (so e.g. 0.84)
   const roundedConfidence = Number(finalConfidence.toFixed(2));
 
-  // PRINT EXTENSIVE LOGS (Step 6)
-  console.log("- Baseline: 0.98");
-  if (reductions.length > 0) {
-    console.log("- Confidence Reductions Applied:");
-    reductions.forEach(r => console.log(`  * ${r}`));
-  } else {
-    console.log("- Confidence Reductions Applied: None (Pristine Image Capture)");
-  }
-  console.log(`- Raw Model Certainty: ${rawConf.toFixed(2)}`);
-  console.log(`- Final Calibrated Confidence Score: ${roundedConfidence}`);
+  console.log(`- Detected Category: ${category}`);
+  console.log(`- Computed Variation Factor: ${variationFactor.toFixed(3)}`);
+  console.log(`- Raw Gemini Confidence: ${rawConf.toFixed(2)}`);
+  console.log(`- Final Calibrated Confidence: ${roundedConfidence}`);
   console.log("🔒 --------------------------------------------------\n");
 
   return roundedConfidence;

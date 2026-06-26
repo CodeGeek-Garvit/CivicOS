@@ -25,6 +25,104 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Location / GIS Spatial States
+  const [isLiveMode, setIsLiveMode] = useState<boolean>(false);
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    city: string;
+    state: string;
+    country: string;
+    locationSource: "GPS" | "ReverseGeocoded" | "DemoSeed";
+  } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<"idle" | "requesting" | "success" | "denied" | "error">("idle");
+  const [newlyUploadedIssueId, setNewlyUploadedIssueId] = useState<string | null>(null);
+
+  const GOOGLE_MAPS_KEY =
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+    (globalThis as any).GOOGLE_MAPS_PLATFORM_KEY ||
+    "";
+
+  // Reverse Geocoding with Google Maps HTTP Geocode service
+  const runReverseGeocoding = async (lat: number, lng: number) => {
+    let city = "City unavailable";
+    let state = "State unavailable";
+    let country = "Country unavailable";
+
+    try {
+      if (GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY !== "YOUR_API_KEY") {
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_KEY}`
+        );
+        const data = await response.json();
+        if (data.status === "OK" && data.results && data.results.length > 0) {
+          const addressComponents = data.results[0].address_components;
+          for (const comp of addressComponents) {
+            if (comp.types.includes("locality")) {
+              city = comp.long_name;
+            } else if (comp.types.includes("administrative_area_level_1")) {
+              state = comp.long_name;
+            } else if (comp.types.includes("country")) {
+              country = comp.long_name;
+            }
+          }
+          if (!city || city === "City unavailable") {
+            const subLoc = addressComponents.find((c: any) =>
+              c.types.includes("sublocality") || c.types.includes("administrative_area_level_2")
+            );
+            if (subLoc) city = subLoc.long_name;
+          }
+          console.log(`[CIVICOS GIS LOG] Geocoding success: ${city}, ${state}, ${country}`);
+        } else {
+          console.warn(`[CIVICOS GIS LOG] Geocoding failure: status ${data.status}`);
+        }
+      } else {
+        console.warn("[CIVICOS GIS LOG] Geocoding failure: No Google Maps API Key available.");
+      }
+    } catch (err) {
+      console.error("[CIVICOS GIS LOG] Geocoding failure:", err);
+    }
+
+    setUserLocation({
+      latitude: lat,
+      longitude: lng,
+      city: city || "City unavailable",
+      state: state || "State unavailable",
+      country: country || "Country unavailable",
+      locationSource: (GOOGLE_MAPS_KEY && GOOGLE_MAPS_KEY !== "YOUR_API_KEY") ? "ReverseGeocoded" : "GPS"
+    });
+  };
+
+  // Browser navigator geolocation connector
+  const requestGPS = () => {
+    setGpsStatus("requesting");
+    if (!navigator.geolocation) {
+      setGpsStatus("error");
+      setIsLiveMode(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        console.log(`[CIVICOS GIS LOG] GPS acquired: Latitude ${lat}, Longitude ${lng}`);
+        setGpsStatus("success");
+        setIsLiveMode(true);
+        await runReverseGeocoding(lat, lng);
+      },
+      (err) => {
+        setGpsStatus("denied");
+        setIsLiveMode(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  useEffect(() => {
+    requestGPS();
+  }, []);
+
   // Load existing reports on mount and set up Realtime Firestore Sync
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -52,13 +150,12 @@ export default function App() {
           const clientDb = getFirestore(clientApp, data.config.databaseId);
           const q = query(collection(clientDb, "issues"), orderBy("createdAt", "desc"));
 
-          console.log("🔗 [CIVICOS REALTIME] Establishing Firestore snapshot listener...");
           unsubscribe = onSnapshot(q, (snapshot) => {
             const list: SavedIssue[] = [];
             snapshot.forEach((doc) => {
               list.push({ id: doc.id, ...(doc.data() as any) });
             });
-            console.log(`🔗 [CIVICOS REALTIME] Received Firestore update. Retransmitting ${list.length} issues dynamically.`);
+            console.log("[CIVICOS GIS LOG] Realtime update");
             setSavedIssuesList(list);
           }, (err) => {
             console.error("🔗 [CIVICOS REALTIME] Firestore sync failed, falling back to HTTP polling:", err);
@@ -184,47 +281,24 @@ export default function App() {
     setSaving(true);
     setError(null);
 
-    console.log("\n==================================================");
-    console.log("🚩 [CIVICOS SAVE PIPELINE] Button Clicked");
-    console.log("🚩 [CIVICOS SAVE PIPELINE] Acquiring current coordinates...");
+    const issueCoords = isLiveMode && userLocation ? {
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude
+    } : undefined;
 
-    let coords: { latitude: number; longitude: number } | null = null;
-    try {
-      if (navigator.geolocation) {
-        const getPos = () => new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 4000 });
-        });
-        const pos = await getPos();
-        coords = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude
-        };
-        console.log("🚩 [CIVICOS GEOLOCATION] Acquired precise GPS coordinate of reporter:", coords);
-      }
-    } catch (geoErr) {
-      console.warn("🚩 [CIVICOS GEOLOCATION] GPS unavailable, falling back to Pune ward seeds:", geoErr);
-    }
-
-    console.log("🚩 [CIVICOS SAVE PIPELINE] Sending POST /api/issues/report");
-    
     const payload = {
       issue: {
         ...analysisResult,
         imageUrl: selectedImage,
-        location: coords || undefined
+        location: issueCoords,
+        city: isLiveMode && userLocation ? userLocation.city : "Pune",
+        state: isLiveMode && userLocation ? userLocation.state : "Maharashtra",
+        country: isLiveMode && userLocation ? userLocation.country : "India",
+        locationSource: isLiveMode ? (GOOGLE_MAPS_KEY ? "ReverseGeocoded" : "GPS") : "DemoSeed",
+        markerSource: isLiveMode ? "LIVE_UPLOAD" : "DEMO_DATA",
+        isDemoMode: !isLiveMode
       }
     };
-
-    console.log("🚩 [CIVICOS SAVE PIPELINE] Request Payload:", {
-      issueType: payload.issue.issueType,
-      title: payload.issue.title,
-      severity: payload.issue.severity,
-      confidence: payload.issue.confidence,
-      hasImage: !!payload.issue.imageUrl,
-      imageLengthBytes: payload.issue.imageUrl ? payload.issue.imageUrl.length : 0,
-      location: payload.issue.location
-    });
-    console.log("==================================================\n");
 
     try {
       const response = await fetch("/api/issues/report", {
@@ -245,23 +319,25 @@ export default function App() {
       }
 
       if (responseData && responseData.success) {
+        console.log("[CIVICOS GIS LOG] Upload complete");
         setSaveSuccess(true);
+        if (responseData.issue?.id) {
+          setNewlyUploadedIssueId(responseData.issue.id);
+        }
         // Refresh the ledger
         fetchIssues();
-        // Clear active report input to allow next
+        // Switch tab to map and reset input elements after a brief duration
         setTimeout(() => {
+          setActiveTab("map");
           setSelectedImage(null);
           setAnalysisResult(null);
           setSaveSuccess(false);
-        }, 3000);
+        }, 1500);
       } else {
         throw new Error(responseData?.error || "Save operation failed.");
       }
     } catch (err: any) {
-      console.error("\n==================================================");
-      console.error("❌ [CIVICOS SAVE PIPELINE] Front-end Catch: Save failed!");
-      console.error(`- Error Message: ${err.message || err}`);
-      console.error("==================================================\n");
+      console.error("[CIVICOS GIS LOG] Save failed:", err.message || err);
       setError(err.message || "Failed to persist issue to Firestore.");
     } finally {
       setSaving(false);
@@ -363,6 +439,12 @@ export default function App() {
             issues={savedIssuesList} 
             onRefresh={fetchIssues} 
             isLoading={loadingList} 
+            isLiveMode={isLiveMode}
+            userLocation={userLocation}
+            onPromptGPS={requestGPS}
+            gpsStatus={gpsStatus}
+            newlyUploadedIssueId={newlyUploadedIssueId}
+            onClearNewlyUploaded={() => setNewlyUploadedIssueId(null)}
           />
         ) : (
           /* SPRINT 1: AI Autonomous Intake Hub view (Completely Preserved) */

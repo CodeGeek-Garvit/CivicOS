@@ -489,6 +489,12 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       location: (issue.location && typeof issue.location.latitude === "number" && typeof issue.location.longitude === "number")
         ? { latitude: issue.location.latitude, longitude: issue.location.longitude }
         : generatePuneCoordinate(),
+      city: issue.city || "Pune",
+      state: issue.state || "Maharashtra",
+      country: issue.country || "India",
+      locationSource: issue.locationSource || (issue.location ? "GPS" : "DemoSeed"),
+      markerSource: issue.markerSource || "FIRESTORE",
+      isDemoMode: issue.isDemoMode ?? false,
 
       // Extended perception & structural parameters (Step 8)
       perceptionData: basicPerception,

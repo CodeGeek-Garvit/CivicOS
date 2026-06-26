@@ -27,6 +27,11 @@ export interface SavedIssue extends GeminiAnalysis {
   ward?: string;
   isFallback?: boolean;
   isDemoMode?: boolean;
+  city?: string;
+  state?: string;
+  country?: string;
+  locationSource?: "GPS" | "ReverseGeocoded" | "DemoSeed";
+  markerSource?: "LIVE_UPLOAD" | "DEMO_DATA" | "FIRESTORE";
 }
 
 // ==========================================
