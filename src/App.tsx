@@ -10,6 +10,40 @@ import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
 import { GeminiAnalysis, SavedIssue } from "./types";
 
+const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.src = base64Str;
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        const ratio = maxWidth / width;
+        width = maxWidth;
+        height = height * ratio;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL("image/jpeg", quality);
+        resolve(compressedBase64);
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+  });
+};
+
 export default function App() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -226,8 +260,16 @@ export default function App() {
     setFileName(file.name);
 
     const reader = new FileReader();
-    reader.onloadend = () => {
-      setSelectedImage(reader.result as string);
+    reader.onloadend = async () => {
+      const originalBase64 = reader.result as string;
+      try {
+        const compressedBase64 = await compressImage(originalBase64);
+        console.log(`[IMAGE COMPRESSION] Original size: ${(originalBase64.length / 1024).toFixed(1)} KB, Compressed size: ${(compressedBase64.length / 1024).toFixed(1)} KB`);
+        setSelectedImage(compressedBase64);
+      } catch (err) {
+        console.error("Image compression error, falling back:", err);
+        setSelectedImage(originalBase64);
+      }
     };
     reader.onerror = () => {
       setError("Failed to read image file.");
@@ -336,6 +378,9 @@ export default function App() {
         setSaveSuccess(true);
         if (responseData.issue?.id) {
           setNewlyUploadedIssueId(responseData.issue.id);
+        }
+        if (responseData.issue) {
+          setAnalysisResult(responseData.issue);
         }
         // Refresh the ledger
         fetchIssues();
