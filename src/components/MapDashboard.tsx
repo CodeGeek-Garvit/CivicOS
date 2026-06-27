@@ -4,8 +4,11 @@ import { SavedIssue } from "../types";
 import { 
   Layers, MapPin, AlertTriangle, ShieldCheck, HelpCircle, Sparkles, Clock, 
   Search, ShieldAlert, Cpu, Eye, BarChart3, Users, ChevronRight, Lock, Map as MapIcon, RefreshCw, AppWindow,
-  Activity, TrendingUp, ArrowUpRight, DollarSign, Droplets, Flame, Lightbulb, ClipboardList, Shield
+  Activity, TrendingUp, ArrowUpRight, DollarSign, Droplets, Flame, Lightbulb, ClipboardList, Shield,
+  Brain
 } from "lucide-react";
+import { runDecisionIntelligence } from "../lib/decisionEngine";
+import OpsAdvisorPanel from "./OpsAdvisorPanel";
 
 // Google Maps Platform API Key setup
 const API_KEY =
@@ -65,7 +68,7 @@ function MapDashboardContent({
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<"gis" | "analytics">("gis");
+  const [sidebarTab, setSidebarTab] = useState<"gis" | "analytics" | "operations">("gis");
 
   // Helper: map affectedAsset or issueType to high-level departments
   const getDepartmentName = (asset: string, issueType?: string): string => {
@@ -806,6 +809,10 @@ function MapDashboardContent({
     };
   }, [activeIssuesList]);
 
+  const decisionData = useMemo(() => {
+    return runDecisionIntelligence(activeIssuesList);
+  }, [activeIssuesList]);
+
   // Google Places Suggestion selection handler
   const handleSuggestionSelect = (suggestion: google.maps.places.AutocompletePrediction) => {
     if (typeof google === "undefined" || !google.maps) return;
@@ -970,35 +977,46 @@ function MapDashboardContent({
         </div>
 
         {/* Intelligence Sidebar Tabs */}
-        <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
           <button
             onClick={() => setSidebarTab("gis")}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 ${
+            className={`py-2 px-1 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
               sidebarTab === "gis"
                 ? "bg-white text-slate-900 shadow-sm border border-slate-200/50"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Layers className="h-3.5 w-3.5" />
-            <span>GIS & Filters</span>
+            <Layers className="h-3 w-3" />
+            <span>GIS Filters</span>
           </button>
           <button
             onClick={() => setSidebarTab("analytics")}
-            className={`py-2 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 relative ${
+            className={`py-2 px-1 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 relative ${
               sidebarTab === "analytics"
                 ? "bg-indigo-600 text-white shadow-sm"
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>Civic Intelligence</span>
+            <Sparkles className="h-3 w-3" />
+            <span>GIS Analytics</span>
             {activeIssuesList.length > 0 && (
-              <span className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+              <span className={`absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold ${
                 sidebarTab === "analytics" ? "bg-white text-indigo-600" : "bg-indigo-600 text-white"
               }`}>
                 {activeIssuesList.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setSidebarTab("operations")}
+            className={`py-2 px-1 text-[10px] font-bold rounded-lg transition-all flex items-center justify-center gap-1 relative ${
+              sidebarTab === "operations"
+                ? "bg-rose-600 text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Brain className="h-3 w-3 animate-pulse" />
+            <span>Ops Advisor</span>
           </button>
         </div>
 
@@ -1270,7 +1288,7 @@ function MapDashboardContent({
               </div>
             </div>
           </>
-        ) : (
+        ) : sidebarTab === "analytics" ? (
           <div className="space-y-5" id="municipal-intelligence-hub">
             
             {/* FEATURE 3: Infrastructure Health Index */}
@@ -1535,6 +1553,15 @@ function MapDashboardContent({
             </div>
 
           </div>
+        ) : (
+          <OpsAdvisorPanel 
+            decisionData={decisionData} 
+            onSelectIssue={(issue) => {
+              if (onSelectIssue) onSelectIssue(issue);
+              setSelectedIssueId(issue.id);
+            }} 
+            map={map}
+          />
         )}
       </div>
 
