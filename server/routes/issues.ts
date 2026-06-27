@@ -6,6 +6,7 @@ import { computeOperationalPriority } from "../engines/priorityEngine";
 import { getResponsibleDepartment } from "../engines/departmentEngine";
 import { getResponseSLA } from "../engines/slaEngine";
 import { computeCostOfInaction } from "../engines/costEngine";
+import { buildDispatchPackage, runAutonomousDispatchPipeline } from "../engines/dispatchEngine";
 
 // Fallback logic representing a realistic perception engine response
 function getCategoryAwareFallbackPerception(fileName: string = "") {
@@ -262,7 +263,17 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
               description: data.description || ""
             });
           }
-          return { id: doc.id, ...data, costOfInaction };
+          let dispatch = data.dispatch;
+          if (!dispatch) {
+            let hash = 0;
+            const idStr = String(doc.id || "");
+            for (let i = 0; i < idStr.length; i++) {
+              hash += idStr.charCodeAt(i);
+            }
+            const sequenceNumber = (hash % 1000) + 1;
+            dispatch = runAutonomousDispatchPipeline({ id: doc.id, ...data, costOfInaction }, sequenceNumber);
+          }
+          return { id: doc.id, ...data, costOfInaction, dispatch };
         });
         return res.json({ success: true, issues });
       }
@@ -285,7 +296,17 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
           description: data.description || ""
         });
       }
-      return { ...data, costOfInaction };
+      let dispatch = data.dispatch;
+      if (!dispatch) {
+        let hash = 0;
+        const idStr = String(data.id || "");
+        for (let i = 0; i < idStr.length; i++) {
+          hash += idStr.charCodeAt(i);
+        }
+        const sequenceNumber = (hash % 1000) + 1;
+        dispatch = runAutonomousDispatchPipeline({ ...data, costOfInaction }, sequenceNumber);
+      }
+      return { ...data, costOfInaction, dispatch };
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     res.json({ success: true, issues: sortedInMemory, isDemoMode: true });
   });
@@ -572,6 +593,9 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
 
     if (!isFirestoreAvailable || !db) {
       console.warn("Firestore is not configured. Saving issue locally in-memory.");
+      const sequenceNumber = inMemoryIssues.length + 1;
+      const dispatch = runAutonomousDispatchPipeline(newIssue, sequenceNumber);
+      (newIssue as any).dispatch = dispatch;
       inMemoryIssues.push(newIssue);
       return res.status(201).json({
         success: true,
@@ -583,6 +607,18 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
 
     try {
       const docRef = doc(db, "issues", newIssue.id);
+      
+      let sequenceNumber = 1;
+      try {
+        const issuesSnap = await getDocs(collection(db, "issues"));
+        sequenceNumber = issuesSnap.size + 1;
+      } catch (e) {
+        sequenceNumber = Math.floor(Math.random() * 1000) + 100;
+      }
+      
+      const dispatch = runAutonomousDispatchPipeline(newIssue, sequenceNumber);
+      (newIssue as any).dispatch = dispatch;
+
       await setDoc(docRef, newIssue);
 
       const verifySnap = await getDoc(docRef);

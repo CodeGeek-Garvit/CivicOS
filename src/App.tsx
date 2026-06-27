@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { 
   Upload, Image as ImageIcon, Loader2, CheckCircle, 
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
-  Activity, FileText, Database, Layers, Check, RefreshCw,
+  Activity, FileText, Database, Layers, Check, RefreshCw, Cpu,
   MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow,
-  Info, ChevronDown
+  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
@@ -39,6 +39,8 @@ export default function App() {
   const [gpsStatus, setGpsStatus] = useState<"idle" | "requesting" | "success" | "denied" | "error">("idle");
   const [newlyUploadedIssueId, setNewlyUploadedIssueId] = useState<string | null>(null);
   const [showMethodology, setShowMethodology] = useState<boolean>(false);
+  const [showEmailPreview, setShowEmailPreview] = useState<boolean>(false);
+  const [showSheetsPreview, setShowSheetsPreview] = useState<boolean>(false);
 
   const GOOGLE_MAPS_KEY =
     process.env.GOOGLE_MAPS_PLATFORM_KEY ||
@@ -984,6 +986,408 @@ export default function App() {
                       </div>
                     );
                   })()}
+
+                  {/* 🤖 AUTONOMOUS DISPATCH AGENT */}
+                  {(() => {
+                    function getFrontendDepartment(affectedAsset: string): string {
+                      const asset = (affectedAsset || "").toLowerCase();
+                      switch (asset) {
+                        case "road":
+                          return "Roads & Infrastructure Department";
+                        case "streetlight":
+                          return "Electrical Maintenance Department";
+                        case "footpath":
+                          return "Urban Development Department";
+                        case "water_pipe":
+                        case "drainage":
+                          return "Water & Drainage Department";
+                        case "waste_bin":
+                          return "Solid Waste Management Department";
+                        case "electrical":
+                          return "Electrical Maintenance Department";
+                        default:
+                          return "Municipal General Department";
+                      }
+                    }
+
+                    function getOfficerForDepartment(dept: string): string {
+                      const d = (dept || "").toLowerCase();
+                      if (d.includes("road")) return "Road Maintenance Supervisor";
+                      if (d.includes("electrical")) return "Electrical Maintenance Officer";
+                      if (d.includes("water") || d.includes("drainage")) return "Water Network Supervisor";
+                      if (d.includes("waste")) return "Solid Waste Inspector";
+                      if (d.includes("urban") || d.includes("development") || d.includes("footpath")) return "Civil Works Engineer";
+                      return "Municipal Operations Officer";
+                    }
+
+                    function getFrontendSLA(priority: string): string {
+                      switch ((priority || "").toUpperCase()) {
+                        case "CRITICAL": return "Dispatch within 2 hours. Resolve within 12 hours.";
+                        case "HIGH": return "Dispatch within 6 hours. Resolve within 24 hours.";
+                        case "MEDIUM": return "Dispatch within 12 hours. Resolve within 48 hours.";
+                        case "LOW": return "Dispatch within 24 hours. Resolve within 72 hours.";
+                        default: return "Inspect within 24 hours. Resolve within 72 hours.";
+                      }
+                    }
+
+                    const isRegistered = !!(analysisResult as any).dispatch;
+                    
+                    let dispatch = (analysisResult as any).dispatch;
+                    if (!dispatch) {
+                      const tempDept = getFrontendDepartment(analysisResult.affectedAsset || "");
+                      const tempOfficer = getOfficerForDepartment(tempDept);
+                      const tempSLA = getFrontendSLA(analysisResult.priorityLevel || "MEDIUM");
+                      
+                      const draftDispatch = {
+                        dispatchId: "CIV-DSP-DRAFT",
+                        issueId: analysisResult.id || "DRAFT-ID",
+                        createdAt: new Date().toISOString(),
+                        department: tempDept,
+                        priorityLevel: analysisResult.priorityLevel || "MEDIUM",
+                        technicalSeverity: Number(analysisResult.technicalSeverity || analysisResult.severity || 5),
+                        responseSLA: tempSLA,
+                        repairCostToday: analysisResult.costOfInaction?.repairCostNow || 4500,
+                        repairCost30Days: analysisResult.costOfInaction?.repairCost30Days || 9400,
+                        repairCost90Days: analysisResult.costOfInaction?.repairCost90Days || 24800,
+                        citizensAffected: analysisResult.costOfInaction?.estimatedCitizensAffected || 380,
+                        recommendedAction: analysisResult.costOfInaction?.recommendedAction || "Schedule pavement restoration within 24 hours.",
+                        responsibleOfficer: tempOfficer,
+                        dispatchStatus: "READY",
+                        emailStatus: "PENDING",
+                        sheetStatus: "PENDING",
+                        workflowStage: "PACKAGE_GENERATED"
+                      };
+
+                      const priorityLevelStr = String(draftDispatch.priorityLevel || "MEDIUM").toUpperCase();
+                      const draftSubject = `[CivicOS Dispatch] ${draftDispatch.dispatchId} | ${analysisResult.title || analysisResult.issueType || "Municipal Issue"} | Priority ${priorityLevelStr}`;
+                      const coords = analysisResult.location 
+                        ? `${analysisResult.location.latitude.toFixed(6)}, ${analysisResult.location.longitude.toFixed(6)}`
+                        : "73.8567, 18.5204";
+                      const confidenceScore = analysisResult.confidence !== undefined 
+                        ? `${(analysisResult.confidence * 100).toFixed(0)}%` 
+                        : "85%";
+                      const costTodayStr = draftDispatch.repairCostToday.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+                      const cost30Str = draftDispatch.repairCost30Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+                      const cost90Str = draftDispatch.repairCost90Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+                      const costDiff30 = (draftDispatch.repairCost30Days - draftDispatch.repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+                      const costDiff90 = (draftDispatch.repairCost90Days - draftDispatch.repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+                      const aiSummary = analysisResult.rationale || (analysisResult.reasoning && Array.isArray(analysisResult.reasoning) ? analysisResult.reasoning.join(". ") : "Progressive physical and structural deterioration identified requiring immediate intervention.");
+                      const evidenceImage = analysisResult.imageUrl || "No evidence image link provided";
+
+                      const draftBody = `
+======================================================================
+MUNICIPAL OPERATIONS & DISPATCH DIVISION - WORK ORDER
+======================================================================
+Dispatch ID:          ${draftDispatch.dispatchId}
+Incident ID:          ${draftDispatch.issueId}
+Generated On:         ${draftDispatch.createdAt}
+Workflow Stage:       ${draftDispatch.workflowStage}
+----------------------------------------------------------------------
+DEPARTMENTAL ASSIGNMENT
+----------------------------------------------------------------------
+Responsible Dept:     ${draftDispatch.department}
+Responsible Officer:  ${draftDispatch.responsibleOfficer}
+Response SLA:         ${draftDispatch.responseSLA}
+----------------------------------------------------------------------
+INCIDENT SPECIFICATIONS
+----------------------------------------------------------------------
+Issue Title:          ${analysisResult.title || "Untitled Incident"}
+Issue Type:           ${analysisResult.issueType || "Other"}
+Priority Level:       ${draftDispatch.priorityLevel}
+Technical Severity:   ${draftDispatch.technicalSeverity}/10
+Confidence Score:     ${confidenceScore}
+Citizens Affected:    ~${draftDispatch.citizensAffected} per day
+Location:             City: ${analysisResult.city || "Pune"}, State: ${analysisResult.state || "Maharashtra"}, Country: India
+Coordinates:          ${coords}
+Evidence Image Link:  ${evidenceImage}
+Description:          ${analysisResult.description || "No description provided."}
+----------------------------------------------------------------------
+AI ENGINEERING SUMMARY
+----------------------------------------------------------------------
+${aiSummary}
+----------------------------------------------------------------------
+OPERATIONAL DIRECTION & ACTION
+----------------------------------------------------------------------
+Recommended Action:   ${draftDispatch.recommendedAction}
+----------------------------------------------------------------------
+FINANCIAL REPAIR & DELAY SUMMARY (COST OF INACTION)
+----------------------------------------------------------------------
+Estimated Repair Cost Today:  ${costTodayStr}
+Projected Cost in 30 Days:    ${cost30Str} (Delay Penalty: +${costDiff30})
+Projected Cost in 90 Days:    ${cost90Str} (Delay Penalty: +${costDiff90})
+Risk Escalation Level:        ${analysisResult.costOfInaction?.riskEscalation || "MEDIUM"}
+----------------------------------------------------------------------
+CONFIDENTIALITY NOTICE: This is an official municipal dispatch transmittal.
+It is intended solely for authorized contractors and departmental officers.
+======================================================================
+`;
+
+                      const draftSheetPayload = {
+                        "Dispatch ID": draftDispatch.dispatchId,
+                        "Issue ID": draftDispatch.issueId,
+                        "Issue Type": analysisResult.issueType || "Other",
+                        "Department": draftDispatch.department,
+                        "Officer": draftDispatch.responsibleOfficer,
+                        "Priority": draftDispatch.priorityLevel,
+                        "Severity": draftDispatch.technicalSeverity,
+                        "Confidence": confidenceScore,
+                        "Location": `${analysisResult.city || "Pune"}, ${analysisResult.state || "Maharashtra"} (Coords: ${coords})`,
+                        "Status": draftDispatch.dispatchStatus,
+                        "Response SLA": draftDispatch.responseSLA,
+                        "Repair Cost": draftDispatch.repairCostToday,
+                        "30 Day Cost": draftDispatch.repairCost30Days,
+                        "90 Day Cost": draftDispatch.repairCost90Days,
+                        "Created Time": draftDispatch.createdAt,
+                        "Recommended Action": draftDispatch.recommendedAction,
+                        "Workflow Stage": draftDispatch.workflowStage,
+                        "Email Status": draftDispatch.emailStatus
+                      };
+
+                      dispatch = {
+                        ...draftDispatch,
+                        emailSubject: draftSubject,
+                        emailBody: draftBody,
+                        sheetPayload: draftSheetPayload,
+                        emailStatus: "READY",
+                        sheetStatus: "READY",
+                        workflowStage: "EMAIL_GENERATED"
+                      };
+                    }
+
+                    const workflow = dispatch.workflowStage;
+                    const isEmailGenerated = ["EMAIL_GENERATED", "EMAIL_SENT", "SHEET_LOGGED", "DISPATCH_COMPLETE"].includes(workflow);
+                    const isEmailSent = ["EMAIL_SENT", "SHEET_LOGGED", "DISPATCH_COMPLETE"].includes(workflow);
+                    const isSheetLogged = ["SHEET_LOGGED", "DISPATCH_COMPLETE"].includes(workflow);
+                    const isDispatchComplete = workflow === "DISPATCH_COMPLETE";
+
+                    return (
+                      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6 mt-6 animate-fade-in" id="autonomous-dispatch-card">
+                        <div className="pb-4 border-b border-slate-100 space-y-2">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="bg-indigo-50 text-indigo-600 p-2 rounded-xl border border-indigo-200/50">
+                              <Cpu className="h-5 w-5 animate-pulse" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-1.5">
+                                🤖 Autonomous Dispatch Agent
+                              </h3>
+                              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mt-0.5">Municipal Operations & Dispatch Routing</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Status section (Driven by workflow state) */}
+                        <div className="space-y-3">
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Autonomous Communication Pipeline</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                            {/* 1. Dispatch Package Generated */}
+                            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100/50">
+                              <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>✓ Dispatch Package Generated</span>
+                            </div>
+
+                            {/* 2. Department Assigned */}
+                            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100/50">
+                              <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>✓ Department Assigned</span>
+                            </div>
+
+                            {/* 3. Officer Assigned */}
+                            <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100/50">
+                              <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>✓ Officer Assigned</span>
+                            </div>
+
+                            {/* 4. Email Generated */}
+                            <div className={`flex items-center gap-2 text-xs font-semibold p-2.5 rounded-xl border ${
+                              isEmailGenerated 
+                                ? "text-emerald-600 bg-emerald-50/50 border-emerald-100/50" 
+                                : "text-slate-500 bg-slate-50 border-slate-200"
+                            }`}>
+                              {isEmailGenerated ? (
+                                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <div className="h-4 w-4 rounded-full border border-slate-300 flex items-center justify-center text-[8px] font-black shrink-0">○</div>
+                              )}
+                              <span>{isEmailGenerated ? "✓ Email Generated" : "○ Email Pending"}</span>
+                            </div>
+
+                            {/* 5. Email Sent */}
+                            <div className={`flex items-center gap-2 text-xs font-semibold p-2.5 rounded-xl border ${
+                              isEmailSent 
+                                ? "text-emerald-600 bg-emerald-50/50 border-emerald-100/50" 
+                                : "text-slate-500 bg-slate-50 border-slate-200"
+                            }`}>
+                              {isEmailSent ? (
+                                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <div className="h-4 w-4 rounded-full border border-slate-300 flex items-center justify-center text-[8px] font-black shrink-0">○</div>
+                              )}
+                              <span>{isEmailSent ? "✓ Email Sent" : "○ Email Sent"}</span>
+                            </div>
+
+                            {/* 6. Google Sheets Logged */}
+                            <div className={`flex items-center gap-2 text-xs font-semibold p-2.5 rounded-xl border ${
+                              isSheetLogged 
+                                ? "text-emerald-600 bg-emerald-50/50 border-emerald-100/50" 
+                                : "text-slate-500 bg-slate-50 border-slate-200"
+                            }`}>
+                              {isSheetLogged ? (
+                                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <div className="h-4 w-4 rounded-full border border-slate-300 flex items-center justify-center text-[8px] font-black shrink-0">○</div>
+                              )}
+                              <span>{isSheetLogged ? "✓ Google Sheets Logged" : "○ Google Sheets Logged"}</span>
+                            </div>
+
+                            {/* 7. Dispatch Complete */}
+                            <div className={`col-span-1 md:col-span-2 flex items-center gap-2 text-xs font-semibold p-2.5 rounded-xl border ${
+                              isDispatchComplete 
+                                ? "text-emerald-600 bg-emerald-50/50 border-emerald-100/50" 
+                                : "text-slate-500 bg-slate-50 border-slate-200"
+                            }`}>
+                              {isDispatchComplete ? (
+                                <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                              ) : (
+                                <div className="h-4 w-4 rounded-full border border-slate-300 flex items-center justify-center text-[8px] font-black shrink-0">○</div>
+                              )}
+                              <span>{isDispatchComplete ? "✓ Dispatch Complete" : "○ Dispatch Complete"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Key Fields Grid */}
+                        <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-5">
+                          <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 min-w-0">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Workflow Stage</span>
+                            <span className="text-xs font-black text-slate-700 uppercase mt-1 block truncate">
+                              {dispatch.workflowStage}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 min-w-0">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Dispatch ID</span>
+                            <span className="text-xs font-mono font-black text-indigo-600 uppercase mt-1 block truncate">
+                              {isRegistered ? dispatch.dispatchId : "DRAFT_PREVIEW"}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 min-w-0">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Officer Assigned</span>
+                            <span className="text-xs font-black text-slate-700 uppercase mt-1 block truncate">
+                              {dispatch.responsibleOfficer}
+                            </span>
+                          </div>
+                          <div className="bg-slate-50/50 p-3 rounded-xl border border-slate-100 min-w-0">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Department Assigned</span>
+                            <span className="text-xs font-black text-slate-700 uppercase mt-1 block truncate">
+                              {dispatch.department}
+                            </span>
+                          </div>
+                          <div className="col-span-2 bg-slate-50/50 p-3 rounded-xl border border-slate-100 min-w-0">
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block leading-none">Response SLA</span>
+                            <span className="text-xs font-black text-slate-700 uppercase mt-1 block">
+                              {dispatch.responseSLA}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* PART 5 — EMAIL PREVIEW PANEL (COLLAPSIBLE) */}
+                        <div className="border-t border-slate-100 pt-4">
+                          <button
+                            type="button"
+                            onClick={() => setShowEmailPreview(!showEmailPreview)}
+                            className="w-full flex items-center justify-between text-left p-3 rounded-xl bg-slate-50 hover:bg-indigo-50/30 border border-slate-200 transition-all group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-indigo-500 group-hover:animate-bounce" />
+                              <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                                Generated Municipal Work Order
+                              </span>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showEmailPreview ? "rotate-180" : ""}`} />
+                          </button>
+
+                          {showEmailPreview && (
+                            <div className="mt-3 border border-slate-200 rounded-xl bg-slate-50/50 p-4 space-y-4 animate-fade-in font-sans">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pb-3 border-b border-slate-200/60">
+                                <div>
+                                  <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">Recipient Department</span>
+                                  <span className="font-semibold text-slate-700">{dispatch.department}</span>
+                                </div>
+                                <div>
+                                  <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">Assigned Officer</span>
+                                  <span className="font-semibold text-slate-700">{dispatch.responsibleOfficer}</span>
+                                </div>
+                                <div className="col-span-1 md:col-span-2">
+                                  <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block">Subject Line</span>
+                                  <span className="font-mono font-bold text-indigo-700">{dispatch.emailSubject || "Draft Work Order Subject"}</span>
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <span className="font-bold text-slate-400 uppercase tracking-wider text-[10px] block mb-1.5">Professional Email Preview</span>
+                                <pre className="font-mono text-[11px] whitespace-pre-wrap text-slate-700 bg-white p-4 border border-slate-200 rounded-xl max-h-96 overflow-y-auto leading-relaxed shadow-inner">
+                                  {dispatch.emailBody || "Generating professional work order email template..."}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* PART 6 — GOOGLE SHEETS PREVIEW (COLLAPSIBLE) */}
+                        <div className="border-t border-slate-100 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowSheetsPreview(!showSheetsPreview)}
+                            className="w-full flex items-center justify-between text-left p-3 rounded-xl bg-slate-50 hover:bg-emerald-50/30 border border-slate-200 transition-all group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <FileSpreadsheet className="h-4 w-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+                              <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                                Municipal Registry Preview
+                              </span>
+                            </div>
+                            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showSheetsPreview ? "rotate-180" : ""}`} />
+                          </button>
+
+                          {showSheetsPreview && (
+                            <div className="mt-3 space-y-2 animate-fade-in">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Live Google Sheets Column Map</span>
+                              {dispatch.sheetPayload ? (
+                                <div className="overflow-x-auto border border-emerald-200 rounded-xl bg-emerald-50/20 font-mono text-xs shadow-inner">
+                                  <table className="w-full border-collapse">
+                                    <thead>
+                                      <tr className="bg-emerald-50 text-emerald-800 border-b border-emerald-200">
+                                        <th className="p-2 border-r border-emerald-200 text-center w-8 bg-slate-100 text-slate-500 font-sans text-[10px] select-none">Row</th>
+                                        {Object.keys(dispatch.sheetPayload).map((col, idx) => (
+                                          <th key={idx} className="p-2 border-r border-emerald-200 font-bold text-left select-none whitespace-nowrap text-[10px] uppercase tracking-wider text-emerald-900 bg-emerald-100/50">
+                                            {col}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr className="bg-white hover:bg-emerald-50/10 border-b border-emerald-100">
+                                        <td className="p-2 border-r border-emerald-200 text-center bg-slate-50 text-slate-400 font-sans text-[10px] select-none font-semibold">2</td>
+                                        {Object.entries(dispatch.sheetPayload).map(([col, val], idx) => (
+                                          <td key={idx} className="p-2 border-r border-emerald-200 text-slate-700 whitespace-nowrap truncate max-w-[220px]" title={String(val)}>
+                                            {typeof val === "number" ? val.toLocaleString("en-IN") : String(val)}
+                                          </td>
+                                        ))}
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="p-4 border border-slate-200 rounded-xl bg-slate-50 text-center text-xs text-slate-500">
+                                  Generating spreadsheet registry row payload...
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </motion.div>
               ) : (
                 <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm" id="empty-analysis-container">
@@ -1033,7 +1437,11 @@ export default function App() {
                   {savedIssuesList.map((item) => (
                     <div 
                       key={item.id} 
-                      className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start"
+                      onClick={() => {
+                        setAnalysisResult(item);
+                        setSelectedImage(item.imageUrl);
+                      }}
+                      className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start cursor-pointer hover:shadow-sm"
                       id={`ledger-item-${item.id}`}
                     >
                       {item.imageUrl && (
