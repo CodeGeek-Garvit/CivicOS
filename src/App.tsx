@@ -1105,7 +1105,7 @@ export default function App() {
 
                       const priorityLevelStr = String(draftDispatch.priorityLevel || "MEDIUM").toUpperCase();
                       const draftSubject = `[CivicOS Dispatch] ${draftDispatch.dispatchId} | ${analysisResult.title || analysisResult.issueType || "Municipal Issue"} | Priority ${priorityLevelStr}`;
-                      const coords = analysisResult.location 
+                      const coords = (analysisResult.location && analysisResult.location.latitude != null && analysisResult.location.longitude != null) 
                         ? `${analysisResult.location.latitude.toFixed(6)}, ${analysisResult.location.longitude.toFixed(6)}`
                         : "73.8567, 18.5204";
                       const confidenceScore = analysisResult.confidence !== undefined 
