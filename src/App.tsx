@@ -4,10 +4,11 @@ import {
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
   Activity, FileText, Database, Layers, Check, RefreshCw, Cpu,
   MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow,
-  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight
+  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
+import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
 import { GeminiAnalysis, SavedIssue } from "./types";
 
 const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -56,7 +57,7 @@ export default function App() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedIssuesList, setSavedIssuesList] = useState<SavedIssue[]>([]);
   const [loadingList, setLoadingList] = useState(false);
-  const [activeTab, setActiveTab] = useState<"map" | "reporter">("map");
+  const [activeTab, setActiveTab] = useState<"command-center" | "map" | "operations" | "reporter">("command-center");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -453,10 +454,21 @@ export default function App() {
           </div>
 
           {/* Segmented Tab Navigation Controls */}
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50" id="view-tabs-container">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 flex-wrap gap-0.5" id="view-tabs-container">
+            <button
+              onClick={() => setActiveTab("command-center")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
+                activeTab === "command-center"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <Cpu className="h-4 w-4" />
+              <span>Executive Command Center</span>
+            </button>
             <button
               onClick={() => setActiveTab("map")}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
                 activeTab === "map"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
@@ -466,8 +478,19 @@ export default function App() {
               <span>Geographic Intelligence Map</span>
             </button>
             <button
+              onClick={() => setActiveTab("operations")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
+                activeTab === "operations"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <Brain className="h-4 w-4" />
+              <span>Operations Advisor</span>
+            </button>
+            <button
               onClick={() => setActiveTab("reporter")}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-extrabold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
                 activeTab === "reporter"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
@@ -491,7 +514,15 @@ export default function App() {
       {/* Main Content Body */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         
-        {activeTab === "map" ? (
+        {activeTab === "command-center" ? (
+          /* SPRINT 8 CENTERPIECE: Executive Command Center view */
+          <ExecutiveCommandCenter 
+            issues={savedIssuesList}
+            isLiveMode={isLiveMode}
+            onRefresh={fetchIssues}
+            isLoading={loadingList}
+          />
+        ) : activeTab === "map" || activeTab === "operations" ? (
           /* SPRINT 2 CENTERPIECE: Map Dashboard view */
           <MapDashboard 
             issues={savedIssuesList} 
@@ -503,6 +534,7 @@ export default function App() {
             gpsStatus={gpsStatus}
             newlyUploadedIssueId={newlyUploadedIssueId}
             onClearNewlyUploaded={() => setNewlyUploadedIssueId(null)}
+            initialSidebarTab={activeTab === "operations" ? "operations" : "gis"}
           />
         ) : (
           /* SPRINT 1: AI Autonomous Intake Hub view (Completely Preserved) */

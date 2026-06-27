@@ -36,6 +36,7 @@ interface MapDashboardProps {
   gpsStatus: "idle" | "requesting" | "success" | "denied" | "error";
   newlyUploadedIssueId?: string | null;
   onClearNewlyUploaded?: () => void;
+  initialSidebarTab?: "gis" | "analytics" | "operations";
 }
 
 // Pune coordinates center
@@ -58,7 +59,8 @@ function MapDashboardContent({
   onPromptGPS,
   gpsStatus,
   newlyUploadedIssueId,
-  onClearNewlyUploaded
+  onClearNewlyUploaded,
+  initialSidebarTab
 }: MapDashboardProps) {
   const map = useMap();
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
@@ -68,7 +70,13 @@ function MapDashboardContent({
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<"gis" | "analytics" | "operations">("gis");
+  const [sidebarTab, setSidebarTab] = useState<"gis" | "analytics" | "operations">(initialSidebarTab || "gis");
+
+  useEffect(() => {
+    if (initialSidebarTab) {
+      setSidebarTab(initialSidebarTab);
+    }
+  }, [initialSidebarTab]);
 
   // Helper: map affectedAsset or issueType to high-level departments
   const getDepartmentName = (asset: string, issueType?: string): string => {

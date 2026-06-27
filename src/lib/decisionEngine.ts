@@ -435,15 +435,18 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
   const avgSeverity = totalActive > 0 ? list.reduce((sum, i) => sum + (i.severity || 5), 0) / totalActive : 0;
   const avgCost = totalActive > 0 ? immediateBudget / totalActive : 0;
 
-  // Calculate infrastructure health index using our existing deterministic penalty formula
-  const densityPenalty = totalActive * 2.5;
-  const severityPenalty = avgSeverity * 3.5;
-  const hazardPenalty = criticalActive * 4.0;
-  const activeDepts = departmentPriorities.filter(d => d.activeCount > 0).length;
-  const diversityPenalty = activeDepts > 0 ? (5 - activeDepts) * 2.0 : 10;
-  
-  const totalPenalty = densityPenalty + severityPenalty + hazardPenalty + Math.max(0, diversityPenalty);
-  const infrastructureHealthIndex = Math.max(15, Math.min(100, Math.round(100 - totalPenalty)));
+  // Calculate infrastructure health index using a realistic, deterministic, and balanced penalty-based formula
+  const volumePenalty = Math.min(20, (totalActive / 30) * 20);
+  const criticalRatio = totalActive > 0 ? criticalActive / totalActive : 0;
+  const criticalPenalty = criticalRatio * 30;
+  const severityPenalty = (avgSeverity / 10) * 25;
+  const liabilityPenalty = Math.min(15, (projected90DayBudget / 500000) * 15);
+  const maxDeptCount = departmentPriorities.length > 0 ? Math.max(...departmentPriorities.map(d => d.activeCount)) : 0;
+  const concentrationRatio = totalActive > 0 ? maxDeptCount / totalActive : 0;
+  const concentrationPenalty = concentrationRatio * 10;
+
+  const totalPenalty = volumePenalty + criticalPenalty + severityPenalty + liabilityPenalty + concentrationPenalty;
+  const infrastructureHealthIndex = Math.max(10, Math.min(100, Math.round(100 - totalPenalty)));
 
   return {
     totalActive,
