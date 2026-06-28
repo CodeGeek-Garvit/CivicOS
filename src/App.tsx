@@ -242,6 +242,37 @@ export default function App() {
     }
   };
 
+  const handleUpdateIssueStatus = async (
+    id: string, 
+    newStatus: string, 
+    extraData?: {
+      afterImageUrl?: string;
+      inspectionResult?: string;
+      verifiedBy?: string;
+      completionTime?: string;
+    }
+  ) => {
+    try {
+      const response = await fetch(`/api/issues/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: newStatus,
+          ...extraData
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        console.log(`[CIVICOS LIFE SYNC] Status updated for ${id} to ${newStatus}`);
+        fetchIssues(); // Refresh list to propagate everywhere
+      } else {
+        console.error("Failed to update status:", data.error);
+      }
+    } catch (err) {
+      console.error("Error updating status:", err);
+    }
+  };
+
   // Convert uploaded file to base64
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -521,6 +552,7 @@ export default function App() {
             isLiveMode={isLiveMode}
             onRefresh={fetchIssues}
             isLoading={loadingList}
+            onUpdateIssueStatus={handleUpdateIssueStatus}
           />
         ) : activeTab === "map" || activeTab === "operations" ? (
           /* SPRINT 2 CENTERPIECE: Map Dashboard view */
@@ -535,6 +567,7 @@ export default function App() {
             newlyUploadedIssueId={newlyUploadedIssueId}
             onClearNewlyUploaded={() => setNewlyUploadedIssueId(null)}
             initialSidebarTab={activeTab === "operations" ? "operations" : "gis"}
+            onUpdateIssueStatus={handleUpdateIssueStatus}
           />
         ) : (
           /* SPRINT 1: AI Autonomous Intake Hub view (Completely Preserved) */

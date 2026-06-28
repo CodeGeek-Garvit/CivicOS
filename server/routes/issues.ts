@@ -641,4 +641,55 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       });
     }
   });
+
+  // PATCH /api/issues/:id
+  app.patch("/api/issues/:id", async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { status, afterImageUrl, inspectionResult, verifiedBy, completionTime } = req.body;
+
+    console.log(`\n==================================================`);
+    console.log(`📥 [CIVICOS UPDATE PIPELINE] PATCH /api/issues/${id}`);
+    console.log(`- New Status: ${status}`);
+    console.log(`==================================================\n`);
+
+    if (!isFirestoreAvailable || !db) {
+      const idx = inMemoryIssues.findIndex(i => i.id === id);
+      if (idx !== -1) {
+        inMemoryIssues[idx] = {
+          ...inMemoryIssues[idx],
+          ...(status !== undefined && { status }),
+          ...(afterImageUrl !== undefined && { afterImageUrl }),
+          ...(inspectionResult !== undefined && { inspectionResult }),
+          ...(verifiedBy !== undefined && { verifiedBy }),
+          ...(completionTime !== undefined && { completionTime }),
+        };
+        return res.json({ success: true, issue: inMemoryIssues[idx] });
+      }
+      return res.status(404).json({ error: "Issue not found" });
+    }
+
+    try {
+      const docRef = doc(db, "issues", id);
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        return res.status(404).json({ error: "Issue not found in Firestore" });
+      }
+
+      const currentData = docSnap.data();
+      const updatedData = {
+        ...currentData,
+        ...(status !== undefined && { status }),
+        ...(afterImageUrl !== undefined && { afterImageUrl }),
+        ...(inspectionResult !== undefined && { inspectionResult }),
+        ...(verifiedBy !== undefined && { verifiedBy }),
+        ...(completionTime !== undefined && { completionTime }),
+      };
+
+      await setDoc(docRef, updatedData);
+      return res.json({ success: true, issue: updatedData });
+    } catch (error: any) {
+      console.error("❌ [CIVICOS UPDATE PIPELINE] Firestore Patch Failed:", error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  });
 }

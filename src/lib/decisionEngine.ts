@@ -44,6 +44,9 @@ export interface DepartmentPriorityItem {
   liability90Day: number;
   priority: "Critical" | "High" | "Medium" | "Low";
   explanation: string;
+  riskScore: number;
+  normalizedLiability: number;
+  normalizedCitizens: number;
 }
 
 export interface RankedIssueItem {
@@ -131,7 +134,7 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
     return "₹" + Math.round(amount).toLocaleString("en-IN");
   };
 
-  const departmentPriorities: DepartmentPriorityItem[] = departmentsList.map(deptName => {
+  const rawDepts = departmentsList.map(deptName => {
     const deptIssues = list.filter(i => getDepartmentName(i.affectedAsset || "", i.issueType) === deptName);
     const activeCount = deptIssues.length;
     const criticalCount = deptIssues.filter(i => (i.severity || 0) >= 8).length;
@@ -140,61 +143,70 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
     const citizensAffected = deptIssues.reduce((sum, curr) => sum + (curr.costOfInaction?.estimatedCitizensAffected || 150), 0);
     const immediateRepairCost = deptIssues.reduce((sum, curr) => sum + (curr.costOfInaction?.repairCostNow || 4500), 0);
     const liability90Day = deptIssues.reduce((sum, curr) => sum + (curr.costOfInaction?.repairCost90Days || 15750), 0);
-    const costGap = liability90Day - immediateRepairCost;
-
-    // Deterministic priority score calculation
-    // Base priority is Low. We upgrade based on critical incidents, average severity, citizens affected, and financial escalation.
-    let priority: "Critical" | "High" | "Medium" | "Low" = "Low";
-    let explanation = "";
-
-    if (activeCount === 0) {
-      priority = "Low";
-      explanation = "No active incidents registered for this sector. Asset registers display baseline stability.";
-    } else {
-      const priorityScore = (avgSeverity * 8) + (criticalCount * 20) + (activeCount * 4) + (citizensAffected / 100) + (costGap / 10000);
-      
-      if (priorityScore >= 80 || criticalCount >= 2 || avgSeverity >= 8) {
-        priority = "Critical";
-      } else if (priorityScore >= 40 || criticalCount >= 1 || avgSeverity >= 6) {
-        priority = "High";
-      } else if (priorityScore >= 15) {
-        priority = "Medium";
-      } else {
-        priority = "Low";
-      }
-
-      const urgencyAdjective = priority === "Critical" ? "immediate emergency intervention" :
-                               priority === "High" ? "high-priority coordination" :
-                               priority === "Medium" ? "scheduled maintenance dispatch" : "routine observation";
-
-      explanation = `${deptName} requires ${urgencyAdjective} to address ${activeCount} active incident${activeCount > 1 ? "s" : ""} (${criticalCount} critical). Delayed remediation risks a structural deterioration gap of ${formatRupees(costGap)} within 90 days, impacting an estimated population of ${citizensAffected.toLocaleString()} citizens.`;
-    }
-
     return {
-      departmentName: deptName,
+      deptName,
       activeCount,
       criticalCount,
       avgSeverity,
       citizensAffected,
       immediateRepairCost,
-      liability90Day,
-      priority,
-      explanation
+      liability90Day
     };
   });
 
-  // Calculate highest risk department based on active incidents + severity weighting
-  let highestRiskDept = "None";
-  let maxRiskScore = -1;
-  departmentPriorities.forEach(d => {
-    if (d.activeCount > 0) {
-      const riskScore = (d.activeCount * 5) + (d.criticalCount * 15) + (d.avgSeverity * 10);
-      if (riskScore > maxRiskScore) {
-        maxRiskScore = riskScore;
-        highestRiskDept = d.departmentName;
+  const maxLiability = Math.max(...rawDepts.map(d => d.liability90Day), 1);
+  const maxCitizens = Math.max(...rawDepts.map(d => d.citizensAffected), 1);
+
+  const departmentPriorities: DepartmentPriorityItem[] = rawDepts.map(dept => {
+    const normalizedLiability = (dept.liability90Day / maxLiability) * 10;
+    const normalizedCitizens = (dept.citizensAffected / maxCitizens) * 10;
+    
+    // Formula: (Critical * 4) + (AvgSeverity * 3) + NormalizedLiability + NormalizedCitizens
+    const riskScore = dept.activeCount > 0 ? ((dept.criticalCount * 4) + (dept.avgSeverity * 3) + normalizedLiability + normalizedCitizens) : 0;
+    
+    let priority: "Critical" | "High" | "Medium" | "Low" = "Low";
+    if (dept.activeCount === 0) {
+      priority = "Low";
+    } else {
+      if (riskScore >= 20 || dept.criticalCount >= 2 || dept.avgSeverity >= 8) {
+        priority = "Critical";
+      } else if (riskScore >= 12 || dept.criticalCount >= 1 || dept.avgSeverity >= 6) {
+        priority = "High";
+      } else if (riskScore >= 6) {
+        priority = "Medium";
+      } else {
+        priority = "Low";
       }
     }
+
+    const costGap = dept.liability90Day - dept.immediateRepairCost;
+    const urgencyAdjective = priority === "Critical" ? "immediate emergency intervention" :
+                             priority === "High" ? "high-priority coordination" :
+                             priority === "Medium" ? "scheduled maintenance dispatch" : "routine observation";
+
+    const explanation = `${dept.deptName} requires ${urgencyAdjective} to address ${dept.activeCount} active incident${dept.activeCount > 1 ? "s" : ""} (${dept.criticalCount} critical). Delayed remediation risks a structural deterioration gap of ${formatRupees(costGap)} within 90 days, impacting an estimated population of ${dept.citizensAffected.toLocaleString()} citizens.`;
+
+    return {
+      departmentName: dept.deptName,
+      activeCount: dept.activeCount,
+      criticalCount: dept.criticalCount,
+      avgSeverity: dept.avgSeverity,
+      citizensAffected: dept.citizensAffected,
+      immediateRepairCost: dept.immediateRepairCost,
+      liability90Day: dept.liability90Day,
+      priority,
+      explanation,
+      riskScore,
+      normalizedLiability,
+      normalizedCitizens
+    };
   });
+
+  // Deterministic highest risk department sorting
+  // The highest risk department matches index 0 of sorted department assessment
+  const sortedDeptsByRisk = [...departmentPriorities].sort((a, b) => b.riskScore - a.riskScore);
+  const highestRiskDeptObj = sortedDeptsByRisk.find(d => d.activeCount > 0);
+  const highestRiskDept = highestRiskDeptObj ? highestRiskDeptObj.departmentName : "None";
 
   // 4. Geographic Hotspot Cluster Risk Identification
   const hotspots: Array<{
@@ -205,6 +217,8 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
   }> = [];
 
   const visited = new Set<string>();
+  const tempClusters: Array<{ name: string; riskScore: number; count: number; issueIds: string[] }> = [];
+
   list.forEach(issue => {
     if (visited.has(issue.id) || !issue.location || issue.location.latitude == null || issue.location.longitude == null) return;
 
@@ -246,10 +260,34 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
       riskScore: clusterRisk,
       avgSeverity
     });
+
+    tempClusters.push({
+      name: clusterName,
+      riskScore: clusterRisk,
+      count: cluster.length,
+      issueIds: cluster.map(c => c.id)
+    });
   });
 
   hotspots.sort((a, b) => b.riskScore - a.riskScore);
   const highestRiskCluster = hotspots[0]?.name || "No high-density incident hotspot clusters detected.";
+
+  // Sort tempClusters by riskScore to identify highest risk hotspot
+  tempClusters.sort((a, b) => b.riskScore - a.riskScore);
+  const highestRiskClusterObj = tempClusters[0];
+
+  // Now build issueToClusterMap
+  const issueToClusterMap: Record<string, { name: string; count: number; isHighest: boolean }> = {};
+  tempClusters.forEach(tc => {
+    const isHighest = highestRiskClusterObj ? tc.name === highestRiskClusterObj.name : false;
+    tc.issueIds.forEach(id => {
+      issueToClusterMap[id] = {
+        name: tc.name,
+        count: tc.count,
+        isHighest
+      };
+    });
+  });
 
   // 5. Category Analysis
   const typeStats: Record<string, { count: number; totalSeverity: number }> = {};
@@ -275,56 +313,147 @@ export const runDecisionIntelligence = (activeIssuesList: SavedIssue[]): Decisio
   });
 
   // 6. Priority Action Queue (Deterministic ranking & transparent weights factor)
-  const rankedQueue: RankedIssueItem[] = list.map(issue => {
-    const sev = issue.severity || 5;
-    const citizens = issue.costOfInaction?.estimatedCitizensAffected || 150;
-    const costNow = issue.costOfInaction?.repairCostNow || 4500;
-    const cost90 = issue.costOfInaction?.repairCost90Days || 15750;
-    const costRatio = costNow > 0 ? cost90 / costNow : 3.5;
-    const costGap = cost90 - costNow;
+  // Calculate 10 factors, normalize each, then apply precise weights
+  const getDispatchNumeric = (issue: SavedIssue) => {
+    const level = String(issue.dispatch?.priorityLevel || "").toUpperCase();
+    if (level === "CRITICAL") return 100;
+    if (level === "HIGH") return 80;
+    if (level === "MEDIUM") return 50;
+    if (level === "LOW") return 30;
+    return (issue.severity || 5) >= 8 ? 90 : 40;
+  };
 
-    let dispatchPriorityScore = 50;
-    let dispatchLabel = "Medium";
-    if (issue.dispatch?.priorityLevel) {
-      const level = String(issue.dispatch.priorityLevel).toUpperCase();
-      dispatchLabel = issue.dispatch.priorityLevel;
-      if (level === "CRITICAL") dispatchPriorityScore = 100;
-      else if (level === "HIGH") dispatchPriorityScore = 80;
-      else if (level === "MEDIUM") dispatchPriorityScore = 50;
-      else if (level === "LOW") dispatchPriorityScore = 30;
-    } else if (sev >= 8) {
-      dispatchPriorityScore = 90;
-      dispatchLabel = "High (Auto)";
+  const rawSeverities = list.map(i => i.severity || 5);
+  const rawDispatches = list.map(i => getDispatchNumeric(i));
+  const rawCitizens = list.map(i => i.costOfInaction?.estimatedCitizensAffected || 150);
+  const rawGrowthRatios = list.map(i => {
+    const now = i.costOfInaction?.repairCostNow || 4500;
+    const fut = i.costOfInaction?.repairCost90Days || 15750;
+    return now > 0 ? fut / now : 3.5;
+  });
+  const rawImmediateCosts = list.map(i => i.costOfInaction?.repairCostNow || 4500);
+  const rawDeptScores = list.map(i => {
+    const dept = getDepartmentName(i.affectedAsset || "", i.issueType);
+    const deptItem = departmentPriorities.find(d => d.departmentName === dept);
+    return deptItem ? deptItem.riskScore : 0;
+  });
+  const rawClusterDensities = list.map(i => {
+    const cl = issueToClusterMap[i.id];
+    return cl ? cl.count : 1;
+  });
+  const rawHighestDepts = list.map(i => {
+    const dept = getDepartmentName(i.affectedAsset || "", i.issueType);
+    return (dept === highestRiskDept && highestRiskDept !== "None") ? 1 : 0;
+  });
+  const rawHighestHotspots = list.map(i => {
+    const cl = issueToClusterMap[i.id];
+    return (cl && cl.isHighest) ? 1 : 0;
+  });
+  const timestamps = list.map(i => i.createdAt ? Date.parse(i.createdAt) : 0);
+  const maxTimestamp = timestamps.length > 0 ? Math.max(...timestamps) : 0;
+  const rawAges = timestamps.map(t => maxTimestamp - t);
+
+  const normalizeArray = (values: number[]): number[] => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max === min) {
+      return values.map(() => (max > 0 ? 100 : 0));
     }
+    return values.map(v => ((v - min) / (max - min)) * 100);
+  };
 
-    const dept = getDepartmentName(issue.affectedAsset || "", issue.issueType);
-    const deptIssuesCount = list.filter(i => getDepartmentName(i.affectedAsset || "", i.issueType) === dept).length;
-    const deptUrgencyScore = Math.min(100, deptIssuesCount * 15);
+  const normSeverities = normalizeArray(rawSeverities);
+  const normDispatches = normalizeArray(rawDispatches);
+  const normCitizens = normalizeArray(rawCitizens);
+  const normGrowthRatios = normalizeArray(rawGrowthRatios);
+  const normImmediateCosts = normalizeArray(rawImmediateCosts);
+  const normDeptScores = normalizeArray(rawDeptScores);
+  const normClusterDensities = normalizeArray(rawClusterDensities);
+  const normHighestDepts = normalizeArray(rawHighestDepts);
+  const normHighestHotspots = normalizeArray(rawHighestHotspots);
+  const normAges = normalizeArray(rawAges);
 
-    const severityScore = sev * 10; // 0 to 100
-    const populationScore = Math.min(100, (citizens / 1200) * 100);
-    const escalationScore = Math.min(100, (costRatio / 5) * 100);
+  const rankedQueue: RankedIssueItem[] = list.map((issue, idx) => {
+    const sevScore = normSeverities[idx];
+    const popScore = normCitizens[idx];
+    const escScore = normGrowthRatios[idx];
+    const dispScore = normDispatches[idx];
+    const deptScore = normDeptScores[idx];
 
-    // Multi-factor formula with exact weights
-    const rankingScore = (severityScore * 0.40) + (populationScore * 0.20) + (escalationScore * 0.20) + (dispatchPriorityScore * 0.10) + (deptUrgencyScore * 0.10);
+    // Compute beautiful 10-factor weighted index (sum = 100%)
+    const score = (normSeverities[idx] * 0.25) +
+                  (normDispatches[idx] * 0.15) +
+                  (normCitizens[idx] * 0.15) +
+                  (normGrowthRatios[idx] * 0.10) +
+                  (normImmediateCosts[idx] * 0.10) +
+                  (normDeptScores[idx] * 0.10) +
+                  (normClusterDensities[idx] * 0.05) +
+                  (normHighestDepts[idx] * 0.04) +
+                  (normHighestHotspots[idx] * 0.03) +
+                  (normAges[idx] * 0.03);
 
-    const justification = `Ranked with score of ${Math.round(rankingScore)}/100 derived from: Severity of ${sev}/10 (40% weight), Population Impact of ${citizens} citizens (20% weight), 90-day Cost Escalation of ${costRatio.toFixed(1)}x (20% weight), Dispatch Priority [${dispatchLabel}] (10% weight), and Department Workload of ${deptIssuesCount} active issues (10% weight).`;
+    const justification = `Ranked with precision score of ${score.toFixed(2)}/100 derived from CivicOS Deterministic Priority Index incorporating 10 weighted municipal integrity factors.`;
 
     return {
       issue,
-      rankingScore,
+      rankingScore: score,
       justification,
       factors: {
-        severityScore,
-        populationScore,
-        escalationScore,
-        dispatchScore: dispatchPriorityScore,
-        deptUrgencyScore
+        severityScore: sevScore,
+        populationScore: popScore,
+        escalationScore: escScore,
+        dispatchScore: dispScore,
+        deptUrgencyScore: deptScore
       }
     };
   });
 
-  rankedQueue.sort((a, b) => b.rankingScore - a.rankingScore);
+  rankedQueue.sort((a, b) => {
+    if (Math.abs(b.rankingScore - a.rankingScore) > 1e-9) {
+      return b.rankingScore - a.rankingScore;
+    }
+
+    // Tie-breaker 1: Higher Severity
+    const sevA = a.issue.severity || 5;
+    const sevB = b.issue.severity || 5;
+    if (sevB !== sevA) return sevB - sevA;
+
+    // Tie-breaker 2: Higher Dispatch Priority
+    const getDispVal = (issue: SavedIssue) => {
+      const level = String(issue.dispatch?.priorityLevel || "").toUpperCase();
+      if (level === "CRITICAL") return 4;
+      if (level === "HIGH") return 3;
+      if (level === "MEDIUM") return 2;
+      if (level === "LOW") return 1;
+      return 0;
+    };
+    const dispA = getDispVal(a.issue);
+    const dispB = getDispVal(b.issue);
+    if (dispB !== dispA) return dispB - dispA;
+
+    // Tie-breaker 3: Higher Liability Growth
+    const getGrowth = (issue: SavedIssue) => {
+      const now = issue.costOfInaction?.repairCostNow || 4500;
+      const fut = issue.costOfInaction?.repairCost90Days || 15750;
+      return fut - now;
+    };
+    const growthA = getGrowth(a.issue);
+    const growthB = getGrowth(b.issue);
+    if (growthB !== growthA) return growthB - growthA;
+
+    // Tie-breaker 4: Higher Citizens Impacted
+    const citA = a.issue.costOfInaction?.estimatedCitizensAffected || 150;
+    const citB = b.issue.costOfInaction?.estimatedCitizensAffected || 150;
+    if (citB !== citA) return citB - citA;
+
+    // Tie-breaker 5: Older Incident (smaller timestamp)
+    const timeA = a.issue.createdAt ? Date.parse(a.issue.createdAt) : 0;
+    const timeB = b.issue.createdAt ? Date.parse(b.issue.createdAt) : 0;
+    if (timeA !== timeB) return timeA - timeB;
+
+    // Tie-breaker 6: Stable alphabetical comparison of Incident ID
+    return a.issue.id.localeCompare(b.issue.id);
+  });
 
   // 7. Executive Recommendations referencing exact live evidence
   const recommendations: ExecutiveRecommendation[] = [];

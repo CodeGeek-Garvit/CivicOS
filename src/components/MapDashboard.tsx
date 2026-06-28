@@ -37,6 +37,7 @@ interface MapDashboardProps {
   newlyUploadedIssueId?: string | null;
   onClearNewlyUploaded?: () => void;
   initialSidebarTab?: "gis" | "analytics" | "operations";
+  onUpdateIssueStatus?: (id: string, newStatus: string, extraData?: any) => void;
 }
 
 // Pune coordinates center
