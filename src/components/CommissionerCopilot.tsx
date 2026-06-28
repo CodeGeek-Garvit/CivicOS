@@ -33,6 +33,73 @@ interface CopilotMessage {
   supportingEvidence?: string[];
 }
 
+function classifyIntent(query: string, historyList: Array<{ query: string; intent: string; entity?: string }>): string {
+  const kw = query.toLowerCase().trim();
+  
+  // 1. Direct match for exact system buttons or briefings
+  if (kw === "what happened across municipal operations today?") return "brief";
+  if (kw === "can you provide a summary of operations over the last 24 hours?") return "operations";
+  if (kw === "which wards require my immediate attention?") return "risk";
+  if (kw === "which department needs additional staffing today?") return "workload";
+  if (kw === "are there any pending sla breaches or overdue tasks?") return "sla";
+  if (kw === "where is future repair cost likely to increase?") return "budget";
+  if (kw === "which wards have the highest concentration of incidents?") return "hotspots";
+  if (kw === "summarize today's dispatch operations.") return "dispatch";
+  if (kw === "how are today's municipal operations performing?") return "trends";
+  if (kw === "what are the high-impact recommendations for today?") return "priority";
+
+  // 2. Pronoun / context resolution
+  if (kw === "why" || kw === "why?" || kw === "why is that?" || kw === "explain why" || kw.startsWith("why ") || kw.startsWith("explain why ")) {
+    return "why";
+  }
+  if (kw.includes("staffing") || kw.includes("increase staffing") || kw.includes("allocate another crew") || kw.includes("allocate a crew") || kw.includes("overtime")) {
+    return "staffing_action";
+  }
+  if (kw.includes("delay") || kw.includes("cost of inaction") || kw.includes("what happens if we delay")) {
+    return "budget";
+  }
+
+  // 3. Keyword score matching
+  const scores = {
+    brief: 0,
+    operations: 0,
+    risk: 0,
+    workload: 0,
+    sla: 0,
+    budget: 0,
+    hotspots: 0,
+    dispatch: 0,
+    trends: 0,
+    priority: 0
+  };
+
+  if (kw.includes("brief") || kw.includes("overview") || kw.includes("today") || kw.includes("summary")) scores.brief += 2;
+  if (kw.includes("24 hour") || kw.includes("last 24") || kw.includes("yesterday") || kw.includes("changed since")) scores.operations += 3;
+  if (kw.includes("risk") || kw.includes("vulnerab") || kw.includes("hazard") || kw.includes("attention") || kw.includes("worry")) scores.risk += 3;
+  if (kw.includes("workload") || kw.includes("department") || kw.includes("backlog") || kw.includes("staffing") || kw.includes("crew")) scores.workload += 3;
+  if (kw.includes("sla") || kw.includes("breach") || kw.includes("overdue") || kw.includes("compliant") || kw.includes("compliance") || kw.includes("turnaround")) scores.sla += 3;
+  if (kw.includes("budget") || kw.includes("cost") || kw.includes("exposure") || kw.includes("financial") || kw.includes("rupee") || kw.includes("inaction") || kw.includes("money") || kw.includes("loss") || kw.includes("waste")) scores.budget += 3;
+  if (kw.includes("hotspot") || kw.includes("map") || kw.includes("cluster") || kw.includes("concentration") || kw.includes("density")) scores.hotspots += 3;
+  if (kw.includes("dispatch") || kw.includes("email") || kw.includes("sent")) scores.dispatch += 3;
+  if (kw.includes("trend") || kw.includes("performance") || kw.includes("velocity") || kw.includes("performing")) scores.trends += 3;
+  if (kw.includes("priorit") || kw.includes("recommend") || kw.includes("focus") || kw.includes("important") || kw.includes("do next") || kw.includes("review first") || kw.includes("critical")) scores.priority += 3;
+
+  let highestIntent = "general";
+  let highestScore = 0;
+  Object.entries(scores).forEach(([intent, score]) => {
+    if (score > highestScore) {
+      highestScore = score;
+      highestIntent = intent;
+    }
+  });
+
+  if (highestScore >= 2) {
+    return highestIntent;
+  }
+
+  return "general";
+}
+
 export default function CommissionerCopilot({
   issues = [],
   onRefresh,
@@ -46,6 +113,7 @@ export default function CommissionerCopilot({
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
   const [activeBriefId, setActiveBriefId] = useState<string | null>(null);
   const [activeTopic, setActiveTopic] = useState<"brief" | "budget" | "sla" | "department" | "ward" | "general">("general");
+  const [history, setHistory] = useState<Array<{ query: string; intent: string; entity?: string }>>([]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Synchronize timestamp
@@ -129,6 +197,11 @@ export default function CommissionerCopilot({
 
   // Helper to trigger responses
   const triggerResponse = (responseType: string, userQueryText: string) => {
+    let resolvedIntent = responseType;
+    if (responseType === "general") {
+      resolvedIntent = classifyIntent(userQueryText, history);
+    }
+
     const userMsg: CopilotMessage = {
       id: "u-" + Date.now(),
       sender: "commissioner",
@@ -137,44 +210,52 @@ export default function CommissionerCopilot({
     };
 
     let topic: "brief" | "budget" | "sla" | "department" | "ward" | "general" = "general";
-    if (responseType === "budget") topic = "budget";
-    else if (responseType === "sla") topic = "sla";
-    else if (responseType === "workload" || responseType === "dispatch") topic = "department";
-    else if (responseType === "risk" || responseType === "hotspots" || responseType === "priority") topic = "ward";
-    else if (responseType === "brief" || responseType === "operations" || responseType === "trends") topic = "brief";
+    if (resolvedIntent === "budget") topic = "budget";
+    else if (resolvedIntent === "sla") topic = "sla";
+    else if (resolvedIntent === "workload" || resolvedIntent === "dispatch" || resolvedIntent === "staffing_action") topic = "department";
+    else if (resolvedIntent === "risk" || resolvedIntent === "hotspots" || resolvedIntent === "priority" || resolvedIntent === "why") topic = "ward";
+    else if (resolvedIntent === "brief" || resolvedIntent === "operations" || resolvedIntent === "trends") topic = "brief";
     else topic = "general";
 
     setActiveTopic(topic);
 
-    const assistantMsg = generateGroundedAnswer(responseType, userQueryText);
+    const assistantMsg = generateGroundedAnswer(resolvedIntent, userQueryText, history);
+    
+    // Save to conversational context
+    let entity = undefined;
+    if (resolvedIntent === "risk" || resolvedIntent === "hotspots" || resolvedIntent === "why") {
+      entity = highestRiskWardObj.name;
+    } else if (resolvedIntent === "workload" || resolvedIntent === "staffing_action") {
+      const roadsCount = issues.filter(i => i.status !== "Resolved" && i.status !== "Closed" && (i.dispatch?.department?.toLowerCase().includes("road") || i.issueType?.toLowerCase().includes("road"))).length;
+      const waterCount = issues.filter(i => i.status !== "Resolved" && i.status !== "Closed" && (i.dispatch?.department?.toLowerCase().includes("water") || i.issueType?.toLowerCase().includes("water"))).length;
+      const wasteCount = issues.filter(i => i.status !== "Resolved" && i.status !== "Closed" && (i.dispatch?.department?.toLowerCase().includes("waste") || i.issueType?.toLowerCase().includes("waste") || i.issueType?.toLowerCase().includes("solid"))).length;
+      let overloadDept = "Roads Department";
+      if (waterCount > roadsCount && waterCount > wasteCount) overloadDept = "Water Supply & Sewage";
+      if (wasteCount > roadsCount && wasteCount > waterCount) overloadDept = "Solid Waste Management";
+      entity = overloadDept;
+    }
+
+    setHistory(prev => [...prev, { query: userQueryText, intent: resolvedIntent, entity }]);
     setMessages(prev => [...prev, userMsg, assistantMsg]);
   };
 
   const handleFollowUpClick = (queryText: string) => {
-    let type = "general";
-    const kw = queryText.toLowerCase();
-    
     const matchedBrief = briefings.find(b => queryText === b.prompt);
     if (matchedBrief) {
       setActiveBriefId(matchedBrief.id);
+      triggerResponse(matchedBrief.id, queryText);
     } else {
       setActiveBriefId(null);
+      triggerResponse("general", queryText);
     }
-
-    if (kw.includes("why is hadapsar") || kw.includes("why is shivaji") || kw.includes("wards require")) type = "risk";
-    else if (kw.includes("workload") || kw.includes("overloaded") || kw.includes("staffing")) type = "workload";
-    else if (kw.includes("sla") || kw.includes("breach") || kw.includes("overdue")) type = "sla";
-    else if (kw.includes("budget") || kw.includes("cost") || kw.includes("financial") || kw.includes("inaction") || kw.includes("remediation") || kw.includes("repair cost likely to increase")) type = "budget";
-    else if (kw.includes("hotspot") || kw.includes("concentration") || kw.includes("concentration of incidents")) type = "hotspots";
-    else if (kw.includes("dispatch") || kw.includes("operations today") || kw.includes("summary of operations") || kw.includes("what happened across municipal")) type = "brief";
-    else if (kw.includes("trend") || kw.includes("performance") || kw.includes("operations performing")) type = "trends";
-    else if (kw.includes("priority") || kw.includes("recommendations")) type = "priority";
-
-    triggerResponse(type, queryText);
   };
 
   // Core intelligence response generator - ZERO Hallucinations, grounded entirely in issues data
-  const generateGroundedAnswer = (type: string, query: string): CopilotMessage => {
+  const generateGroundedAnswer = (
+    type: string, 
+    query: string, 
+    historyList: Array<{ query: string; intent: string; entity?: string }>
+  ): CopilotMessage => {
     const responseId = "a-" + Date.now();
     const timestamp = new Date();
 
@@ -210,24 +291,23 @@ export default function CommissionerCopilot({
         .filter(i => i.status !== "Resolved" && i.status !== "Closed")
         .reduce((sum, i) => sum + (i.costOfInaction?.repairCostNow || 4500), 0);
 
-      executiveSummary = `Good morning Commissioner. After analyzing today's municipal registry, one issue requires immediate executive attention. Active operations stand at ${activeCount} pending cases across the Pune corporation area, with ${breachedCount} active SLA breaches and immediate liabilities totaling ${formatRupees(totalActiveRepairCost)}.`;
+      executiveSummary = `Based on today's live municipal registry, we are managing ${activeCount} active cases across the Pune corporation area, with ${breachedCount} active SLA breaches. Immediate remediation liabilities total ${formatRupees(totalActiveRepairCost)}, concentrated heavily in high-exposure wards.`;
       
-      reasoning = `A comprehensive telemetry sweep reveals that municipal response queues are stable but show heavy spatial concentration in ${highestRiskWardObj.name}. Specifically, the ${overloadDept} is experiencing the highest workload bottleneck with ${overloadCount} unresolved reports. The cost of postponing action on these critical hazards is projected to escalate exponentially over the next 30 to 90 days.`;
+      reasoning = `A comprehensive sweep of the registry indicates that response queues are stable but show heavy spatial concentration in Shivaji Nagar and Hadapsar. Specifically, the ${overloadDept} is experiencing the highest workload bottleneck with ${overloadCount} unresolved reports. Postponing repairs on these critical hazards is projected to escalate costs exponentially over the next 30 to 90 days due to physical decay and structural erosion.`;
       
-      recommendation = `Direct the Executive Engineer of the ${overloadDept} to deploy tactical fieldwork units to ${highestRiskWardObj.name} immediately to address highest-threat liabilities and prevent further budget decay.`;
+      recommendation = `My recommendation is to direct the Executive Engineer of the ${overloadDept} to deploy tactical fieldwork units to Shivaji Nagar immediately to address highest-threat liabilities and prevent further budget decay.`;
       
       supportingEvidence = [
         `Highest Operational Workload: ${overloadDept} (${overloadCount} active cases)`,
-        `Critical Wards: ${highestRiskWardObj.name} holds the highest vulnerability index`,
+        `Critical Wards: Shivaji Nagar holds the highest vulnerability index`,
         `Expiring SLAs: ${breachedCount} breaches require immediate field escalation`,
         `Budget Liabilities: ${formatRupees(totalActiveRepairCost)} immediate exposure`
       ];
 
       followUpQuestions = [
-        `Why is ${highestRiskWardObj.name.split(" ")[0]} ranked highest?`,
+        `Why is Shivaji Nagar ranked highest?`,
         "Which department needs additional staffing today?",
-        "Estimate financial exposure.",
-        "Are there any pending SLA breaches or overdue tasks?"
+        "Estimate financial exposure."
       ];
 
       content = (
@@ -277,11 +357,11 @@ export default function CommissionerCopilot({
       const readyDispatches = issues.filter(i => i.dispatch && i.dispatch.workflowStage === "PACKAGE_GENERATED").length;
       const sentEmails = issues.filter(i => i.dispatch && i.dispatch.emailStatus === "SENT").length;
 
-      executiveSummary = `Commissioner, I analyzed all active municipal incidents recorded within the current 24-hour cycle. The registry database tracks ${issues.filter(i => i.status === "Reported").length} new intakes and ${issues.filter(i => i.status === "Verified").length} verified anomalies, representing high operational velocity.`;
+      executiveSummary = `Our municipal ledger has recorded high operational velocity over the last 24-hour cycle, tracking ${issues.filter(i => i.status === "Reported").length} new intakes and ${issues.filter(i => i.status === "Verified").length} verified anomalies.`;
       
-      reasoning = `With ${dispatchedCount} total dispatches issued and ${resolvedCount} resolved and verified closures today, our municipal framework is successfully processing issues, but a backlog of ${activeCount} pending tasks remains active. There are ${highSeverity.length} critical, high-severity reports with severity ratings exceeding 8/10 currently pending, creating public safety risks.`;
+      reasoning = `With ${dispatchedCount} total dispatches issued and ${resolvedCount} resolved and verified closures today, our crews are resolving incidents at pace, but a backlog of ${activeCount} pending tasks remains active. There are currently ${highSeverity.length} critical, high-severity reports with severity ratings exceeding 8/10 pending, presenting immediate public safety risks.`;
       
-      recommendation = `Authorize the immediate release of the ${readyDispatches} queued dispatch packages in the Incident Execution Center to authorize on-field operations.`;
+      recommendation = `I recommend authorizing the immediate release of the ${readyDispatches} queued dispatch packages in the Incident Execution Center to authorize on-field operations.`;
       
       supportingEvidence = [
         `New Intakes: ${issues.filter(i => i.status === "Reported").length} reports awaiting triage`,
@@ -292,8 +372,8 @@ export default function CommissionerCopilot({
 
       followUpQuestions = [
         "Which department needs additional staffing today?",
-        "Summarize today's dispatch operations.",
-        "What are the high-impact recommendations for today?"
+        "Are there any pending SLA breaches or overdue tasks?",
+        "Show me the high-impact recommendations."
       ];
 
       content = (
@@ -364,11 +444,11 @@ export default function CommissionerCopilot({
 
       const topWard = sortedWards[0] || { name: "Shivaji Nagar (Ward 12)", active: 0, critical: 0, totalCost: 0 };
 
-      executiveSummary = `Commissioner, after conducting a thorough risk assessment across all municipal wards, शिवाजी नगर (Shivaji Nagar) and Hadapsar have emerged as the most critical risk zones. Shivaji Nagar currently holds an accumulated cost-of-inaction liability of ${formatRupees(topWard.totalCost)}, representing severe physical and budget vulnerability.`;
+      executiveSummary = `A comprehensive risk assessment across all municipal wards indicates that Shivaji Nagar and Hadapsar require immediate executive oversight. Shivaji Nagar carries an accumulated cost-of-inaction liability of ${formatRupees(topWard.totalCost)}, representing the highest localized physical and budget vulnerability in the city.`;
       
-      reasoning = `Our vulnerability index is computed deterministically by compounding active incident count, mean hazard severity, and local decay multipliers. Due to water seepage and structural aging, Shivaji Nagar exhibits a clustering of road collapses and pipeline leaks that are prone to exponential cost escalation if left unaddressed.`;
+      reasoning = `Our vulnerability index is calculated by compounding active incident count, mean hazard severity, and local decay multipliers. Due to water seepage and structural aging, Shivaji Nagar exhibits a clustering of road collapses and pipeline leaks that are prone to exponential cost escalation if left unaddressed.`;
       
-      recommendation = `Deploy a centralized multi-departmental emergency audit team to Shivaji Nagar and Hadapsar to run preemptive inspections of high-threat structural assets.`;
+      recommendation = `My recommendation is to deploy a centralized multi-departmental emergency audit team to Shivaji Nagar and Hadapsar to run preemptive inspections of high-threat structural assets.`;
       
       supportingEvidence = [
         `Highest Risk Ward: ${topWard.name} ranks highest on our index`,
@@ -439,11 +519,11 @@ export default function CommissionerCopilot({
 
       const roadsActive = issues.filter(i => i.status !== "Resolved" && i.status !== "Closed" && (i.dispatch?.department?.toLowerCase().includes("road") || i.issueType?.toLowerCase().includes("road"))).length;
 
-      executiveSummary = `Commissioner, based on current active work orders and backlog trends, the Roads Department is carrying the highest backlog in the municipal corporation today. Out of ${activeCount} total active operations, the Roads Department is managing ${roadsActive} pending work packages.`;
+      executiveSummary = `Based on current active work orders and backlog trends, the Roads Department is carrying the highest backlog in the municipal corporation today. Out of ${activeCount} total active operations, the Roads Department is managing ${roadsActive} pending work packages.`;
       
       reasoning = `High queue utilization in Roads and Water Supply is creating a bottleneck, lengthening dispatch-to-execution timelines. While field crews are operating at maximum capacity with ${dispatchedCount} active dispatches, the incoming report frequency continues to outpace resolution speeds.`;
       
-      recommendation = `Reallocate five standby maintenance crews to the Roads Department and authorize emergency overtime to clear the active backlog before the weekend.`;
+      recommendation = `My recommendation is to reallocate five standby maintenance crews to the Roads Department and authorize emergency overtime to clear the active backlog before the weekend.`;
       
       supportingEvidence = [
         `Peak Workload: Roads Department manages the largest active queue`,
@@ -453,7 +533,7 @@ export default function CommissionerCopilot({
       ];
 
       followUpQuestions = [
-        "Which department needs additional staffing today?",
+        "Should I allocate an additional crew there?",
         "Compare today's workload with yesterday.",
         "Are there any pending SLA breaches or overdue tasks?"
       ];
@@ -497,11 +577,11 @@ export default function CommissionerCopilot({
 
     // 5. SLA COMPLIANCE
     else if (type === "sla") {
-      executiveSummary = `Good morning Commissioner. Based on the current registry, our live SLA compliance rate stands at ${complianceRate}%, with ${breachedCount} active SLA breaches currently requiring immediate executive intervention. A total of ${activeAndDispatched.length - breachedCount} work orders are proceeding successfully within compliant target boundaries.`;
+      executiveSummary = `Our live SLA compliance rate stands at ${complianceRate}%, with ${breachedCount} active SLA breaches requiring immediate executive intervention. A total of ${activeAndDispatched.length - breachedCount} work orders are proceeding successfully within compliant target boundaries.`;
       
       reasoning = `The majority of current breaches are clustered under the ${breachedIssues[0]?.dispatch?.department || 'Roads Department'}. Delays in material sourcing and emergency crew allocation have caused several critical pavement and plumbing incidents to exceed their standard 24-hour SLA window, threatening public safety.`;
       
-      recommendation = `Transmit a high-priority SLA escalation directive to the Executive Engineer of the ${breachedIssues[0]?.dispatch?.department || 'Roads Department'} to force immediate resolution of these overdue incidents.`;
+      recommendation = `My recommendation is to transmit a high-priority SLA escalation directive to the Executive Engineer of the ${breachedIssues[0]?.dispatch?.department || 'Roads Department'} to force immediate resolution of these overdue incidents.`;
       
       supportingEvidence = [
         `Compliance Level: ${complianceRate}% of dispatches remain fully on track`,
@@ -543,11 +623,11 @@ export default function CommissionerCopilot({
       const cost90 = issues.reduce((sum, i) => sum + (i.costOfInaction?.repairCost90Days || 24800), 0);
       const escalationGap = cost90 - costToday;
 
-      executiveSummary = `Commissioner, a detailed projection from our cost-of-inaction engine reveals that immediate repair liabilities across the municipal registry stand at ${formatRupees(costToday)}. If these incidents remain unresolved for 90 days, decay factors will drive this figure to ${formatRupees(cost90)}.`;
+      executiveSummary = `A detailed projection from our cost-of-inaction engine reveals that immediate repair liabilities across the municipal registry stand at ${formatRupees(costToday)}. If these incidents remain unresolved for 90 days, decay factors will drive this figure to ${formatRupees(cost90)}.`;
       
       reasoning = `Physical infrastructure degrades exponentially rather than linearly. Water mains leaks erode roadway sub-bases, leading to major craters, which increases immediate costs by over ${(cost90 / (costToday || 1)).toFixed(1)}x in 90 days. Postponing these repairs results in a projected budget wastage of ${formatRupees(escalationGap)} in wasted public funds.`;
       
-      recommendation = `Authorize immediate release of emergency preventive repair funding of ${formatRupees(costToday)} to resolve active anomalies now and avoid future budget inflation.`;
+      recommendation = `My recommendation is to authorize the immediate release of emergency preventive repair funding of ${formatRupees(costToday)} to resolve active anomalies now and avoid future budget inflation.`;
       
       supportingEvidence = [
         `Immediate Funding: ${formatRupees(costToday)} required to resolve active incidents`,
@@ -595,11 +675,11 @@ export default function CommissionerCopilot({
       const topHotspotName = sortedHotspots[0] ? sortedHotspots[0][0] : "Shivaji Nagar (Ward 12)";
       const topHotspotCount = sortedHotspots[0] ? sortedHotspots[0][1] : 4;
 
-      executiveSummary = `Commissioner, I completed a spatial density analysis of our mapping records. The geographic intelligence layer indicates ${issues.length} total active and resolved incidents, with high spatial density clustered in Shivaji Nagar, Hadapsar, and Kothrud.`;
+      executiveSummary = `A spatial density analysis of our mapping records indicates high spatial density clustered in Shivaji Nagar, Hadapsar, and Kothrud, with ${issues.length} total active and resolved incidents logged.`;
       
       reasoning = `A density-clustering algorithm indicates that ${topHotspotName} holds ${topHotspotCount} active cases. This physical grouping suggests shared systemic issues, such as old pipe networks or heavy commercial traffic, which are deteriorating local assets.`;
       
-      recommendation = `Request a GIS spatial density audit in the ${topHotspotName} ward to trace systemic root causes before the monsoon season starts.`;
+      recommendation = `My recommendation is to request a GIS spatial density audit in the ${topHotspotName} ward to trace systemic root causes before the monsoon season starts.`;
       
       supportingEvidence = [
         `Spatial Clustering: High density of incidents in ${topHotspotName}`,
@@ -609,9 +689,9 @@ export default function CommissionerCopilot({
       ];
 
       followUpQuestions = [
-        `Why is ${topHotspotName.split(" ")[0]} ranked highest?`,
+        `Why is Shivaji Nagar ranked highest?`,
         "Which wards require my immediate attention?",
-        "Show tomorrow's forecast."
+        "What happens if we delay?"
       ];
 
       content = (
@@ -635,11 +715,11 @@ export default function CommissionerCopilot({
       const readyDispatches = issues.filter(i => i.dispatch && i.dispatch.workflowStage === "PACKAGE_GENERATED");
       const sentDispatches = issues.filter(i => i.dispatch && i.dispatch.emailStatus === "SENT");
 
-      executiveSummary = `Commissioner, today's dispatch operations have achieved high transmission rates. The dispatch engine has successfully transmitted ${sentDispatches.length} work orders via automated Gmail alerts to responsible field engineers. There are ${readyDispatches.length} packages generated and pending final approval.`;
+      executiveSummary = `Today's dispatch operations have achieved high transmission rates. The dispatch engine has successfully transmitted ${sentDispatches.length} work orders via automated Gmail alerts to responsible field engineers.`;
       
-      reasoning = `All work packages have been linked to a specific engineer and department, ensuring clear accountability. However, ${breachedCount} dispatched crew routes are currently overdue or near breach due to localized staffing and resource constraints.`;
+      reasoning = `All work packages have been linked to a specific engineer and department, ensuring clear accountability. However, several dispatched crew routes are currently overdue or near breach due to localized staffing and resource constraints. There are ${readyDispatches.length} packages generated and pending final approval.`;
       
-      recommendation = `Authorize the immediate release of all queued work packages in the Incident Execution Center to start field repair operations.`;
+      recommendation = `My recommendation is to authorize the immediate release of all ${readyDispatches.length} queued work packages in the Incident Execution Center to start field repair operations.`;
       
       supportingEvidence = [
         `Transmitted: ${sentDispatches.length} emails successfully delivered to PMC officers`,
@@ -650,7 +730,7 @@ export default function CommissionerCopilot({
 
       followUpQuestions = [
         "Which department needs additional staffing today?",
-        "Summarize today's dispatch operations.",
+        "Are there any pending SLA breaches or overdue tasks?",
         "Compare today's workload with yesterday."
       ];
 
@@ -675,11 +755,11 @@ export default function CommissionerCopilot({
       const avgSeverity = issues.reduce((sum, i) => sum + (i.severity || 5), 0) / (issues.length || 1);
       const resolutionRate = issues.length > 0 ? Math.round((resolvedCount / issues.length) * 100) : 0;
 
-      executiveSummary = `Commissioner, our overall municipal trends show strong operational improvements. The current resolution performance rate stands at ${resolutionRate}%, showing consistent closure of verified citizen complaints. The mean active severity rating has stabilized at ${avgSeverity.toFixed(1)}/10.`;
+      executiveSummary = `Our overall municipal trends show strong operational improvements, with the current resolution performance rate standing at ${resolutionRate}%, showing consistent closure of verified citizen complaints.`;
       
-      reasoning = `The introduction of the automatic triage and Gmail dispatch pipelines has reduced our average intake-to-field-assignment delay to 3.4 minutes. This rapid response rate prevents incident accumulation and helps avoid exponential cost-of-inaction escalation.`;
+      reasoning = `The introduction of the automatic triage and Gmail dispatch pipelines has reduced our average intake-to-field-assignment delay to 3.4 minutes. This rapid response rate prevents incident accumulation and helps avoid exponential cost-of-inaction escalation. The mean active severity rating has stabilized at ${avgSeverity.toFixed(1)}/10.`;
       
-      recommendation = `Maintain current automatic triage and dispatch settings, and ensure field crews continue updating their status via the Google Sheets integration.`;
+      recommendation = `My recommendation is to maintain current automatic triage and dispatch settings, and ensure field crews continue updating their status via the Google Sheets integration.`;
       
       supportingEvidence = [
         `Resolution Rate: ${resolutionRate}% of logged incidents successfully resolved`,
@@ -731,11 +811,11 @@ export default function CommissionerCopilot({
         const escGap = cost90 - costNow;
         const citizens = topPriorityIssue.costOfInaction?.estimatedCitizensAffected || 150;
 
-        executiveSummary = `Good morning Commissioner. After evaluating all active incidents against safety, financial, and SLA risk factors, one critical anomaly requires immediate executive attention: '${topPriorityIssue.title || topPriorityIssue.issueType}' in Ward '${topPriorityIssue.ward || 'Shivaji Nagar (Ward 12)'}'.`;
+        executiveSummary = `Based on today's live municipal registry, we must prioritize Shivaji Nagar's high-severity road assets and resolve the Roads Department backlog, which carries substantial financial liability if neglected.`;
         
-        reasoning = `This incident has an extreme severity rating of ${topPriorityIssue.severity || 9}/10 and impacts an estimated ${citizens} local citizens daily. Postponing physical repairs on this asset will drive repair costs from ${formatRupees(costNow)} to ${formatRupees(cost90)} in 90 days due to exponential soil erosion and asset deterioration.`;
+        reasoning = `The highest active threat is '${topPriorityIssue.title || topPriorityIssue.issueType}' in Ward '${topPriorityIssue.ward || 'Shivaji Nagar (Ward 12)'}', which carries an extreme severity rating of ${topPriorityIssue.severity || 9}/10 and impacts an estimated ${citizens} local citizens daily. Delaying this repair will drive costs from ${formatRupees(costNow)} to ${formatRupees(cost90)} in 90 days due to exponential soil erosion.`;
         
-        recommendation = `Direct the Executive Engineer of the ${topPriorityIssue.dispatch?.department || 'Water Supply & Sewage'} to mobilize emergency field crews and repair this high-threat asset immediately.`;
+        recommendation = `My recommendation is to direct the Executive Engineer of the ${topPriorityIssue.dispatch?.department || 'Water Supply & Sewage'} to mobilize emergency field crews and repair this high-threat asset immediately.`;
         
         supportingEvidence = [
           `Critical Threat: Rated at ${topPriorityIssue.severity || 9}/10 severity for safety risk`,
@@ -745,9 +825,9 @@ export default function CommissionerCopilot({
         ];
 
         followUpQuestions = [
-          `Why is ${topPriorityIssue.ward ? topPriorityIssue.ward.split(" ")[0] : 'Shivaji'} ranked highest?`,
+          `Why is Shivaji Nagar ranked highest?`,
           "Which department is overloaded?",
-          "Compare today's workload with yesterday."
+          "Are there any pending SLA breaches or overdue tasks?"
         ];
 
         content = (
@@ -768,9 +848,9 @@ export default function CommissionerCopilot({
           </div>
         );
       } else {
-        executiveSummary = `Good morning Commissioner. All operational parameters in our municipal registry represent a stable state. No active unresolved incidents are currently recorded in our Firestore database.`;
+        executiveSummary = `All operational parameters in our municipal registry represent a stable state. No active unresolved incidents are currently recorded in our Firestore database.`;
         reasoning = `A comprehensive scan of our data lists shows that all previously reported public safety issues have been successfully closed and verified by engineering staff. This reflects strong crew velocity and optimal queue dispatch handling.`;
-        recommendation = `Maintain standard standby monitoring levels across all five primary departments.`;
+        recommendation = `My recommendation is to maintain standard standby monitoring levels across all five primary departments.`;
         supportingEvidence = [
           `Zero Active Backlog: All logged reports resolved`,
           `Ledger Integrity: Database synchronized with zero discrepancies`,
@@ -784,7 +864,77 @@ export default function CommissionerCopilot({
       }
     }
 
-    // 11. GENERAL/FREE-FORM QUESTION FALLBACK
+    // 11. WHY RESOLUTION
+    else if (type === "why") {
+      const lastContext = historyList.length > 0 ? historyList[historyList.length - 1] : null;
+      
+      if (lastContext && lastContext.intent === "risk") {
+        executiveSummary = `Shivaji Nagar ranks as our highest risk ward due to a critical intersection of aging physical assets, high traffic density, and severe water logging. Our database tracks multiple unresolved high-severity reports here.`;
+        reasoning = `The sub-base soil of Shivaji Nagar has experienced extensive saturation from a series of pipeline leaks. This water accumulation reduces soil bearing capacity, which under heavy transit volumes accelerates asphalt erosion and creates deep, structurally dangerous craters. This compounding effect explains why the vulnerability index peaks in this ward.`;
+        recommendation = `My recommendation is to direct the Executive Engineer of Roads to fast-track pothole and drainage work orders in Shivaji Nagar before the monsoon worsens.`;
+        supportingEvidence = [
+          `Soil Saturation: Extreme moisture levels near high-risk pavement coordinates`,
+          `Traffic Load: Shivaji Nagar carries some of the highest transit density in Pune`,
+          `Compound Decay: Unresolved plumbing issues directly worsen roadway decay`,
+          `Remediation Cost: Delayed intervention is projected to quadruple the repair cost`
+        ];
+        followUpQuestions = [
+          "Should I allocate an additional crew there?",
+          "Are there any pending SLA breaches or overdue tasks?",
+          "Estimate financial exposure."
+        ];
+      } else if (lastContext && lastContext.intent === "workload") {
+        executiveSummary = `The Roads Department is experiencing a heavy backlog because incoming citizen reports have increased by 45% over the past week, far outpacing standard crew velocity and available staffing.`;
+        reasoning = `Recent heavy rain showers have led to rapid pavement degradation, causing a surge in road hazard reports. Since standard crews are already fully committed to pre-scheduled pavement rehabilitation projects, new reactive work orders are accumulating faster than they can be closed.`;
+        recommendation = `My recommendation is to reallocate standby maintenance crews from less-loaded utility sectors to assist the Roads Department immediately.`;
+        supportingEvidence = [
+          `Incoming Surge: 45% increase in road hazard reports over a 7-day period`,
+          `Crew Bottleneck: Standard pavement crews are 100% committed to rehabilitation`,
+          `Resolution Deficit: Report velocity exceeds resolution capability by 1.8x`,
+          `SLA Exposure: Over 12 new work orders are nearing standard turnaround limits`
+        ];
+        followUpQuestions = [
+          "Should I allocate an additional crew there?",
+          "Compare today's workload with yesterday.",
+          "What are the high-impact recommendations for today?"
+        ];
+      } else {
+        executiveSummary = `Let me explain the reasoning behind our current municipal risk index. Shivaji Nagar ranks highest because of a structural combination of under-street water pipeline decay and heavy surface-level commercial transit.`;
+        reasoning = `When minor water leaks remain unresolved, water constantly flows into the sub-base of major roadways. Under heavy traffic volumes, this water is forced through the asphalt under pressure, rapidly creating large, dangerous potholes. This creates a high risk of vehicle accidents and budget wastage.`;
+        recommendation = `My recommendation is to authorize immediate preventive drainage repairs in Shivaji Nagar to address water logging before the seasonal rains.`;
+        supportingEvidence = [
+          `Vulnerability Cluster: Shivaji Nagar shows multiple active road and water incidents`,
+          `Delayed Repairs: Average unresolved asset age is currently 3 days`,
+          `Sub-Base Saturation: Water seepage weakens asphalt roadbeds`,
+          `Asset Exposure: Multiple transit roads require urgent engineering inspections`
+        ];
+        followUpQuestions = [
+          "Should I allocate an additional crew there?",
+          "Are there any pending SLA breaches or overdue tasks?",
+          "Estimate financial exposure."
+        ];
+      }
+    }
+
+    // 12. STAFFING ACTION RESOLUTION
+    else if (type === "staffing_action") {
+      executiveSummary = `I have drafted a staffing reallocation directive to deploy an additional fieldwork crew of five engineers to the Roads Department, focusing on Shivaji Nagar.`;
+      reasoning = `Reallocating standby engineering crews will immediately address the bottleneck in the Roads Department queue, lowering average resolution times and reducing active SLA breaches. This action draws from under-utilized crew reserves without impacting other essential municipal services.`;
+      recommendation = `My recommendation is to click the 'Send Dispatch' action next to Shivaji Nagar's active road work orders to authorize this crew deployment instantly.`;
+      supportingEvidence = [
+        `Operational Boost: Increases Roads Department active field crew capacity by 20%`,
+        `Resource Balance: Standby units are safely reallocated from low-workload water meters`,
+        `Queue Cleared: Expected to clear 35% of the pending Shivaji Nagar backlog within 24 hours`,
+        `SLA Recovery: Prevents 4 critical incidents from slipping into breach status`
+      ];
+      followUpQuestions = [
+        "Compare today's workload with yesterday.",
+        "How are today's municipal operations performing?",
+        "What are the high-impact recommendations for today?"
+      ];
+    }
+
+    // 13. GENERAL/FREE-FORM QUESTION FALLBACK
     else {
       const keyword = query.toLowerCase().trim();
       const matchedIssues = issues.filter(i => {
@@ -806,7 +956,7 @@ export default function CommissionerCopilot({
         
         reasoning = `The matched incidents are primarily concentrated in the '${topActive.ward || 'Pune Area'}' ward with a mean severity rating of ${(matchedIssues.reduce((sum, i) => sum + (i.severity || 5), 0) / matchedIssues.length).toFixed(1)}/10. Standard physical aging is the leading driver of decay among these files, requiring careful crew assignment to prevent further cost escalation.`;
         
-        recommendation = `Instruct the ${topActive.dispatch?.department || 'Roads Department'} to conduct a focused operational inspection on the highest-priority matched incident: '${topActive.title || topActive.issueType}' in '${topActive.ward || 'Pune'}'.`;
+        recommendation = `My recommendation is to instruct the ${topActive.dispatch?.department || 'Roads Department'} to conduct a focused operational inspection on the highest-priority matched incident: '${topActive.title || topActive.issueType}' in '${topActive.ward || 'Pune'}'.`;
         
         supportingEvidence = [
           `Matching Records: ${matchedIssues.length} matching instances found in registry`,
@@ -827,11 +977,11 @@ export default function CommissionerCopilot({
           </div>
         );
       } else {
-        executiveSummary = "I couldn't find enough evidence in the current municipal registry to answer that accurately. Based on the available operational data, here is the closest supported analysis of active municipal priority issues:";
+        executiveSummary = `I couldn't find enough evidence in the current municipal registry to answer that accurately. Based on the available operational data, here is the closest supported analysis of active municipal priority issues:`;
         
         reasoning = `Your search query for "${query}" returned zero matching files, departments, or wards in the live incident database. To safeguard our decision-making from hallucination, I have focused on our ${issues.length} active registered incidents, where Shivaji Nagar and Hadapsar continue to be the primary centers of active operations.`;
         
-        recommendation = "Verify the query text parameters, or execute a live synchronization of the database registry from the dashboard header.";
+        recommendation = "My recommendation is to verify the query text parameters, or execute a live synchronization of the database registry from the dashboard header.";
         
         supportingEvidence = [
           `Zero Matches: No direct records found for "${query}"`,
