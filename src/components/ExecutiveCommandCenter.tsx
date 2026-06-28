@@ -31,6 +31,8 @@ interface ExecutiveCommandCenterProps {
       completionTime?: string;
     }
   ) => void;
+  onOpenExecution?: (id: string) => void;
+  onNavigateToTab?: (tab: "command-center" | "map" | "execution-center" | "operations" | "reporter") => void;
 }
 
 export default function ExecutiveCommandCenter({
@@ -38,7 +40,9 @@ export default function ExecutiveCommandCenter({
   isLiveMode,
   onRefresh,
   isLoading,
-  onUpdateIssueStatus
+  onUpdateIssueStatus,
+  onOpenExecution,
+  onNavigateToTab
 }: ExecutiveCommandCenterProps) {
 
   // Selected incident for execution and state tracking
@@ -680,7 +684,16 @@ export default function ExecutiveCommandCenter({
                           <span className="text-[8px] text-slate-400 block uppercase font-bold tracking-wider">PROJECTED LIABILITY (90D)</span>
                           <span className="font-extrabold text-rose-600 text-sm">{formatRupees(item.issue.costOfInaction?.repairCost90Days || 15750)}</span>
                         </div>
-                        <span className="text-[9px] text-slate-400 font-mono text-right mt-1 uppercase">WARD: {item.issue.ward || item.issue.city || "PUNE"}</span>
+                        <div className="flex items-center gap-2 justify-between w-full md:justify-end mt-1">
+                          <span className="text-[9px] text-slate-400 font-mono uppercase">WARD: {item.issue.ward || item.issue.city || "PUNE"}</span>
+                          <button
+                            onClick={() => onOpenExecution?.(item.issue.id)}
+                            className="text-[9px] font-black text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded border border-indigo-100 transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <span>Open Execution</span>
+                            <ArrowRight className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -778,7 +791,16 @@ export default function ExecutiveCommandCenter({
                         <div className="bg-slate-50 border border-slate-100 p-3 rounded-xl flex-1 text-xs space-y-1">
                           <p className="font-extrabold text-slate-900">{action}</p>
                           <p className="text-[10px] text-slate-500 font-semibold">{item.issue.title} (Score: {item.rankingScore.toFixed(1)}/100)</p>
-                          <p className="text-[9px] text-slate-400 font-medium font-mono uppercase">{item.issue.ward || item.issue.city || "Pune"}</p>
+                          <div className="flex justify-between items-center pt-1.5 flex-wrap gap-2">
+                            <span className="text-[9px] text-slate-400 font-medium font-mono uppercase">{item.issue.ward || item.issue.city || "Pune"}</span>
+                            <button
+                              onClick={() => onOpenExecution?.(item.issue.id)}
+                              className="text-[9px] font-black text-indigo-600 hover:text-indigo-800 bg-white hover:bg-slate-100 px-2 py-1 rounded border border-slate-200 transition-all cursor-pointer flex items-center gap-1"
+                            >
+                              <span>Open Execution</span>
+                              <ArrowRight className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1186,371 +1208,25 @@ export default function ExecutiveCommandCenter({
 
       </div>
 
-      {/* SPRINT 9 CENTERPIECE: Pune Municipal Incident Execution Registry */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md animate-fade-in text-left" id="municipal-execution-registry">
-        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1.5 mb-2">
-          <ClipboardCheck className="h-4.5 w-4.5 text-indigo-500" />
-          Section 9 — Pune Municipal Incident Execution Registry & Lifecycle Control
-        </span>
-        <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Registry & Lifecycle Execution Center</h3>
-        <p className="text-xs text-slate-400 mb-6 font-semibold leading-relaxed">
-          Search, filter, inspect and advance active field tickets through their official municipal lifecycles with before/after photos.
-        </p>
-
-        {/* Master-Detail Split Container */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Master Panel (Full if none selected, otherwise 5 cols) */}
-          <div className={`${selectedIssueId ? "lg:col-span-5" : "lg:col-span-12"} space-y-4`}>
-            
-            {/* Search and Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search Pune registry..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-semibold focus:outline-none focus:border-indigo-500 text-slate-800"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-600 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="All">All Statuses</option>
-                  {LIFECYCLE_STATES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterDepartment}
-                  onChange={(e) => setFilterDepartment(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[11px] font-bold text-slate-600 focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="All">All Departments</option>
-                  <option value="Roads & Infrastructure">Roads & Infrastructure</option>
-                  <option value="Electrical Maintenance">Electrical Maintenance</option>
-                  <option value="Water & Drainage">Water & Drainage</option>
-                  <option value="Solid Waste Management">Solid Waste Management</option>
-                  <option value="Municipal General">Municipal General</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Incidents Table/List */}
-            <div className="bg-slate-50 rounded-2xl border border-slate-100/80 overflow-hidden">
-              <div className="max-h-[450px] overflow-y-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100/80 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                      <th className="p-3">Incident</th>
-                      <th className="p-3">Department</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">SLA</th>
-                      <th className="p-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const list = activeIssuesList.filter(issue => {
-                        const titleMatch = (issue.title || "Untitled Issue").toLowerCase().includes((searchQuery || "").toLowerCase());
-                        const idMatch = (issue.id || "").toLowerCase().includes((searchQuery || "").toLowerCase());
-                        const matchesSearch = titleMatch || idMatch;
-
-                        const status = normalizeStatus(issue.status);
-                        const matchesStatus = filterStatus === "All" || status === filterStatus;
-
-                        const dept = getDepartmentName(issue.affectedAsset || "", issue.issueType);
-                        const matchesDept = filterDepartment === "All" || dept === filterDepartment;
-
-                        return matchesSearch && matchesStatus && matchesDept;
-                      });
-
-                      if (list.length === 0) {
-                        return (
-                          <tr>
-                            <td colSpan={5} className="p-8 text-center text-xs text-slate-400 font-bold italic">
-                              No incidents match the search criteria.
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      return list.map((issue) => {
-                        const dept = getDepartmentName(issue.affectedAsset || "", issue.issueType);
-                        const status = normalizeStatus(issue.status);
-                        const sla = getSLAStatus(issue.createdAt, issue.dispatch?.responseSLA || "24 Hours");
-                        const isSelected = selectedIssueId === issue.id;
-
-                        let statusBadgeColor = "bg-indigo-100 text-indigo-800 border-indigo-200";
-                        if (status === "Closed") statusBadgeColor = "bg-emerald-100 text-emerald-800 border-emerald-200";
-                        if (status === "Resolved") statusBadgeColor = "bg-teal-100 text-teal-800 border-teal-200";
-                        if (status === "Quality Inspection") statusBadgeColor = "bg-rose-100 text-rose-800 border-rose-200";
-                        if (status === "Work In Progress") statusBadgeColor = "bg-purple-100 text-purple-800 border-purple-200";
-                        if (status === "Crew Dispatched") statusBadgeColor = "bg-amber-100 text-amber-800 border-amber-200";
-
-                        return (
-                          <tr
-                            key={issue.id}
-                            className={`border-b border-slate-150/50 hover:bg-white/80 transition-all cursor-pointer ${isSelected ? "bg-white border-l-4 border-l-indigo-600" : ""}`}
-                            onClick={() => setSelectedIssueId(issue.id)}
-                          >
-                            <td className="p-3">
-                              <div className="space-y-0.5">
-                                <p className="text-xs font-black text-slate-800 line-clamp-1">{issue.title}</p>
-                                <p className="text-[9px] font-mono font-bold text-slate-400">#{issue.id.slice(-6).toUpperCase()}</p>
-                              </div>
-                            </td>
-                            <td className="p-3 text-[11px] font-bold text-slate-600">
-                              {dept}
-                            </td>
-                            <td className="p-3">
-                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${statusBadgeColor}`}>
-                                {status}
-                              </span>
-                            </td>
-                            <td className="p-3">
-                              <span className={`text-[9px] font-bold ${sla.onTrack ? "text-emerald-600" : "text-rose-600 animate-pulse"}`}>
-                                {sla.onTrack ? "SLA OK" : "BREACHED"}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right">
-                              <button
-                                className="bg-slate-200 hover:bg-slate-300 p-1.5 rounded-lg transition-all text-slate-600"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedIssueId(issue.id);
-                                }}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+      {/* SPRINT 10 UPGRADE: Dedicated Incident Execution Center Link Card */}
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-950 border border-indigo-950 rounded-3xl p-6 shadow-xl text-white text-left animate-fade-in" id="municipal-execution-center-link">
+        <div className="max-w-3xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <span className="text-[10px] bg-indigo-500/20 border border-indigo-400/30 px-3 py-1 rounded-full text-indigo-300 font-semibold uppercase tracking-wider inline-flex items-center gap-1.5">
+              <ClipboardCheck className="h-4 w-4 text-indigo-300" /> Operational Control Room Activated
+            </span>
+            <h3 className="text-xl font-extrabold tracking-tight">Pune Municipal Incident Execution Center</h3>
+            <p className="text-indigo-200 text-sm leading-relaxed">
+              We have promoted our municipal lifecycle control registry to its own top-level system workspace. Search, filter, and inspect field tickets with live SLA countdowns, structured municipal work orders, and professional PDF generation tools.
+            </p>
           </div>
-
-          {/* Detail Panel */}
-          {selectedIssueId && (() => {
-            const issue = activeIssuesList.find(i => i.id === selectedIssueId);
-            if (!issue) return null;
-
-            const dept = getDepartmentName(issue.affectedAsset || "", issue.issueType);
-            const status = normalizeStatus(issue.status);
-            const sla = getSLAStatus(issue.createdAt, issue.dispatch?.responseSLA || "24 Hours");
-            const timeline = getDeterministicTimeline(issue.createdAt, status, dept);
-
-            const transitions = STATUS_TRANSITIONS[status] || [];
-            const nextStatus = transitions[0];
-
-            const afterImageMap: Record<string, string> = {
-              "roads & infrastructure": "https://images.unsplash.com/photo-1515162305285-0293e4767cc2?auto=format&fit=crop&w=400&q=80",
-              "electrical maintenance": "https://images.unsplash.com/photo-1509395062183-67c5ad6faff9?auto=format&fit=crop&w=400&q=80",
-              "solid waste management": "https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=400&q=80",
-              "water & drainage": "https://images.unsplash.com/photo-1542013936693-8848e574047e?auto=format&fit=crop&w=400&q=80",
-              "urban development": "https://images.unsplash.com/photo-1581094288338-2314dddb7ecc?auto=format&fit=crop&w=400&q=80"
-            };
-            const simAfterImage = afterImageMap[(dept || "").toLowerCase()] || "https://images.unsplash.com/photo-1581094288338-2314dddb7ecc?auto=format&fit=crop&w=400&q=80";
-
-            const handleAdvance = () => {
-              if (!onUpdateIssueStatus || !nextStatus) return;
-
-              let payload: any = {};
-              if (nextStatus === "Quality Inspection") {
-                payload = {
-                  afterImageUrl: simAfterImage,
-                  inspectionResult: "Structural core remediation matches ISO-9001 standards."
-                };
-              } else if (nextStatus === "Resolved") {
-                payload = {
-                  verifiedBy: "Inspector M. Kulkarni (ID-892)",
-                  completionTime: new Date().toISOString()
-                };
-              }
-
-              onUpdateIssueStatus(issue.id, nextStatus, payload);
-            };
-
-            return (
-              <div className="lg:col-span-7 bg-slate-50 border border-slate-100 rounded-3xl p-5 space-y-6 text-left relative">
-                <button
-                  onClick={() => setSelectedIssueId(null)}
-                  className="absolute top-4 right-4 text-xs font-bold text-slate-400 hover:text-slate-900 bg-white border border-slate-200 px-2 py-1 rounded-lg"
-                >
-                  Close Detail
-                </button>
-
-                <div className="space-y-1">
-                  <span className="text-[9px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-600 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                    {dept}
-                  </span>
-                  <h4 className="text-sm font-black text-slate-900 leading-tight">
-                    {issue.title}
-                  </h4>
-                  <p className="text-[10px] font-mono text-slate-400">Incident UID: {issue.id}</p>
-                </div>
-
-                {/* VISUAL STATUS TRACKER */}
-                <div className="space-y-2">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                    Visual Progress Tracker (S6)
-                  </span>
-                  <div className="flex items-center gap-1 overflow-x-auto pb-1">
-                    {LIFECYCLE_STATES.map((step, idx) => {
-                      const currentIdx = LIFECYCLE_STATES.indexOf(status);
-                      const isPast = idx < currentIdx;
-                      const isCurrent = idx === currentIdx;
-                      
-                      let dotStyle = "bg-slate-200 text-slate-400";
-                      if (isPast) dotStyle = "bg-emerald-500 text-white";
-                      if (isCurrent) dotStyle = "bg-indigo-600 text-white animate-pulse";
-
-                      return (
-                        <div key={step} className="flex items-center gap-1 shrink-0">
-                          <div className={`text-[8px] font-bold px-2 py-1 rounded-lg border ${dotStyle} flex items-center gap-1`}>
-                            {isPast && <Check className="h-2 w-2" />}
-                            {step}
-                          </div>
-                          {idx < LIFECYCLE_STATES.length - 1 && (
-                            <ChevronRight className="h-3 w-3 text-slate-300" />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* SLA Tracker */}
-                  <div className="bg-white p-3 rounded-2xl border border-slate-200/60 space-y-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                      SLA Monitoring compliance (S8)
-                    </span>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Priority Tier:</span>
-                      <span className="text-[11px] font-extrabold text-slate-900">{issue.dispatch?.priorityLevel || "STANDARD"}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Target Response:</span>
-                      <span className="text-[11px] font-extrabold text-slate-900">{issue.dispatch?.responseSLA || "24 Hours"}</span>
-                    </div>
-                    <div className="border-t border-slate-100 pt-2 flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Status Check:</span>
-                      <span className={`text-[10px] font-black uppercase ${sla.onTrack ? "text-emerald-600" : "text-rose-600"}`}>
-                        {sla.statusText}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Dispatcher Assignment info */}
-                  <div className="bg-white p-3 rounded-2xl border border-slate-200/60 space-y-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                      Emergency Dispatch assignment
-                    </span>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Responsible Officer:</span>
-                      <span className="text-[11px] font-extrabold text-slate-900">{issue.dispatch?.responsibleOfficer || "Duty Officer"}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Work Order ID:</span>
-                      <span className="text-[11px] font-mono text-slate-900">{issue.dispatch?.dispatchId?.slice(-8) || "CIV-WO-8910"}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[11px] text-slate-500">Sub-grade Cost Today:</span>
-                      <span className="text-[11px] font-extrabold text-slate-900">{formatRupees(issue.costOfInaction?.repairCostNow || 4500)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* BEFORE / AFTER PHOTO VERIFICATION */}
-                <div className="space-y-2">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">
-                    Before / After Photo Verification (S10)
-                  </span>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Before Photo */}
-                    <div className="space-y-1 bg-white p-2.5 rounded-2xl border border-slate-200/60">
-                      <span className="text-[9px] font-bold text-rose-600 block uppercase tracking-wider font-sans">Before Repair (Citizen Report)</span>
-                      <div className="h-32 bg-slate-100 rounded-xl overflow-hidden relative border border-slate-200/50">
-                        <img
-                          src={issue.imageUrl}
-                          alt="Before Repair"
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <p className="text-[9px] text-slate-400 text-center font-mono">{issue.createdAt}</p>
-                    </div>
-
-                    {/* After Photo */}
-                    <div className="space-y-1 bg-white p-2.5 rounded-2xl border border-slate-200/60">
-                      <span className="text-[9px] font-bold text-emerald-600 block uppercase tracking-wider font-sans">After Repair Evidence</span>
-                      <div className="h-32 bg-slate-150 rounded-xl overflow-hidden relative border border-slate-200/50 flex flex-col items-center justify-center">
-                        {issue.afterImageUrl ? (
-                          <img
-                            src={issue.afterImageUrl}
-                            alt="After Repair Evidence"
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="text-center p-3 space-y-1.5">
-                            <Image className="h-8 w-8 text-slate-400 mx-auto" />
-                            <p className="text-[9px] text-slate-400 font-extrabold">Awaiting Upload Proof</p>
-                            <p className="text-[8px] text-slate-400">Photo will be logged automatically upon Repair Completion step.</p>
-                          </div>
-                        )}
-                      </div>
-                      {issue.verifiedBy ? (
-                        <p className="text-[9px] text-emerald-600 font-extrabold text-center uppercase tracking-wide">✓ Verified by chief inspector</p>
-                      ) : (
-                        <p className="text-[9px] text-slate-400 text-center uppercase tracking-wide">⟳ Verification Pending</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* ACTION ADVANCE BUTTON */}
-                {nextStatus ? (
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3">
-                    <div className="text-left space-y-0.5">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Advance Incident Stage (S12)</span>
-                      <p className="text-xs font-bold text-slate-700">
-                        Current: <span className="text-indigo-600 font-black">{status}</span> ➜ Target: <span className="text-emerald-600 font-black">{nextStatus}</span>
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleAdvance}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Play className="h-3.5 w-3.5 animate-pulse" />
-                      Advance to {nextStatus}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center gap-3">
-                    <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-black text-emerald-800">Case Execution Complete</p>
-                      <p className="text-[10px] text-emerald-600">This incident is fully closed in the municipal ledger. No further execution steps required.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
+          <button
+            onClick={() => onNavigateToTab?.("execution-center")}
+            className="bg-white hover:bg-slate-100 text-indigo-950 font-black text-xs px-5 py-3 rounded-xl transition-all shadow-md shrink-0 flex items-center gap-2 cursor-pointer border-0"
+          >
+            <span>Open Incident Execution Center</span>
+            <ArrowRight className="h-4 w-4 text-indigo-950" />
+          </button>
         </div>
       </div>
 

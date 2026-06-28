@@ -4,11 +4,12 @@ import {
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
   Activity, FileText, Database, Layers, Check, RefreshCw, Cpu,
   MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow,
-  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain
+  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain, ClipboardCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
 import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
+import IncidentExecutionCenter from "./components/IncidentExecutionCenter";
 import { GeminiAnalysis, SavedIssue } from "./types";
 
 const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -57,7 +58,8 @@ export default function App() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedIssuesList, setSavedIssuesList] = useState<SavedIssue[]>([]);
   const [loadingList, setLoadingList] = useState(false);
-  const [activeTab, setActiveTab] = useState<"command-center" | "map" | "operations" | "reporter">("command-center");
+  const [activeTab, setActiveTab] = useState<"command-center" | "map" | "execution-center" | "operations" | "reporter">("command-center");
+  const [selectedExecutionIssueId, setSelectedExecutionIssueId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -507,7 +509,7 @@ export default function App() {
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50 flex-wrap gap-0.5" id="view-tabs-container">
             <button
               onClick={() => setActiveTab("command-center")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                 activeTab === "command-center"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
@@ -518,7 +520,7 @@ export default function App() {
             </button>
             <button
               onClick={() => setActiveTab("map")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                 activeTab === "map"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
@@ -528,19 +530,19 @@ export default function App() {
               <span>Geographic Intelligence Map</span>
             </button>
             <button
-              onClick={() => setActiveTab("operations")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
-                activeTab === "operations"
+              onClick={() => setActiveTab("execution-center")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                activeTab === "execution-center"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
               }`}
             >
-              <Brain className="h-4 w-4" />
-              <span>Operations Advisor</span>
+              <ClipboardCheck className="h-4 w-4" />
+              <span>Incident Execution Center</span>
             </button>
             <button
               onClick={() => setActiveTab("reporter")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
                 activeTab === "reporter"
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-600 hover:text-indigo-600"
@@ -548,6 +550,17 @@ export default function App() {
             >
               <AppWindow className="h-4 w-4" />
               <span>AI Autonomous Intake Hub</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("operations")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                activeTab === "operations"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <Brain className="h-4 w-4" />
+              <span>Operations Advisor</span>
             </button>
           </div>
           
@@ -571,6 +584,20 @@ export default function App() {
             isLiveMode={isLiveMode}
             onRefresh={fetchIssues}
             isLoading={loadingList}
+            onUpdateIssueStatus={handleUpdateIssueStatus}
+            onOpenExecution={(id) => {
+              setSelectedExecutionIssueId(id);
+              setActiveTab("execution-center");
+            }}
+            onNavigateToTab={(tab: any) => setActiveTab(tab)}
+          />
+        ) : activeTab === "execution-center" ? (
+          /* SPRINT 10 CENTERPIECE: Incident Execution Center view */
+          <IncidentExecutionCenter
+            issues={savedIssuesList}
+            selectedIssueId={selectedExecutionIssueId}
+            onSelectIssueId={(id) => setSelectedExecutionIssueId(id)}
+            onReturnToCommandCenter={() => setActiveTab("command-center")}
             onUpdateIssueStatus={handleUpdateIssueStatus}
           />
         ) : activeTab === "map" || activeTab === "operations" ? (
@@ -1141,12 +1168,12 @@ export default function App() {
 
                     function getOfficerForDepartment(dept: string): string {
                       const d = (dept || "").toLowerCase();
-                      if (d.includes("road")) return "Road Maintenance Supervisor";
-                      if (d.includes("electrical")) return "Electrical Maintenance Officer";
-                      if (d.includes("water") || d.includes("drainage")) return "Water Network Supervisor";
-                      if (d.includes("waste")) return "Solid Waste Inspector";
-                      if (d.includes("urban") || d.includes("development") || d.includes("footpath")) return "Civil Works Engineer";
-                      return "Municipal Operations Officer";
+                      if (d.includes("road")) return "Shri. Anil Khopade (Senior Superintendent Engineer, Roads)";
+                      if (d.includes("electrical")) return "Shri. Sanjay Deshpande (Assistant Executive Engineer, Electrical)";
+                      if (d.includes("water") || d.includes("drainage")) return "Smt. Jyoti Shinde (Executive Engineer, Water Works)";
+                      if (d.includes("waste")) return "Shri. Mahesh Tambe (Chief Sanitation Inspector, SWM)";
+                      if (d.includes("urban") || d.includes("development") || d.includes("footpath")) return "Smt. Prachi Gokhale (Senior Planner & Civil Works Engineer)";
+                      return "Shri. Vijaykumar Shinde (Lead Operations Officer, PMC)";
                     }
 
                     function getFrontendSLA(priority: string): string {

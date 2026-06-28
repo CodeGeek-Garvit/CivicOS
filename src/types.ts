@@ -246,10 +246,10 @@ export interface SLACompliance {
 /**
  * Computes deterministic SLA compliance using actual createdAt timestamp
  */
-export function getSLAStatus(createdAt: string, responseSLA: any): SLACompliance {
+export function getSLAStatus(createdAt: string, responseSLA: any, completionTime?: string, customNow?: Date): SLACompliance {
   const createdDate = new Date(createdAt);
-  const now = new Date("2026-06-27T12:24:04-07:00"); // Consistent reference date matching logs
-  const elapsedMs = Math.max(0, now.getTime() - createdDate.getTime());
+  const endDate = completionTime ? new Date(completionTime) : (customNow || new Date("2026-06-27T12:24:04-07:00"));
+  const elapsedMs = Math.max(0, endDate.getTime() - createdDate.getTime());
   const elapsedHours = elapsedMs / (1000 * 60 * 60);
 
   let targetHours = 24;
@@ -263,7 +263,9 @@ export function getSLAStatus(createdAt: string, responseSLA: any): SLACompliance
   const difference = Math.abs(targetHours - elapsedHours);
 
   let statusText = "";
-  if (onTrack) {
+  if (completionTime) {
+    statusText = onTrack ? "COMPLIANT (SLA Met)" : `BREACHED (SLA Failed by ${Math.round(elapsedHours - targetHours)} hrs)`;
+  } else if (onTrack) {
     statusText = `On Track (${Math.round(targetHours - elapsedHours)} hrs remaining)`;
   } else {
     statusText = `Exceeded by ${Math.round(elapsedHours - targetHours)} hours`;

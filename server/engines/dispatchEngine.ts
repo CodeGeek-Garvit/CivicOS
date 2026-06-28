@@ -10,17 +10,17 @@ import { generateDispatchEmail } from "../templates/dispatchTemplate";
 export function getResponsibleOfficer(department: string): string {
   const dept = (department || "").toLowerCase();
   if (dept.includes("road")) {
-    return "Road Maintenance Supervisor";
+    return "Shri. Anil Khopade (Senior Superintendent Engineer, Roads)";
   } else if (dept.includes("electrical")) {
-    return "Electrical Maintenance Officer";
+    return "Shri. Sanjay Deshpande (Assistant Executive Engineer, Electrical)";
   } else if (dept.includes("water") || dept.includes("drainage")) {
-    return "Water Network Supervisor";
+    return "Smt. Jyoti Shinde (Executive Engineer, Water Works)";
   } else if (dept.includes("waste")) {
-    return "Solid Waste Inspector";
+    return "Shri. Mahesh Tambe (Chief Sanitation Inspector, SWM)";
   } else if (dept.includes("urban") || dept.includes("development") || dept.includes("footpath")) {
-    return "Civil Works Engineer";
+    return "Smt. Prachi Gokhale (Senior Planner & Civil Works Engineer)";
   } else {
-    return "Municipal Operations Officer";
+    return "Shri. Vijaykumar Shinde (Lead Operations Officer, PMC)";
   }
 }
 
