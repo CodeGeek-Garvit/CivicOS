@@ -348,7 +348,7 @@ function generateWorkOrderPdf(issue: SavedIssue): string {
   doc.setTextColor(148, 163, 184);
   doc.text("Pune Municipal Corporation Headquarters • Shivaji Nagar, Pune, Maharashtra 411005 • Internal Operations Dept", 105, 285, { align: "center" });
 
-  return doc.output("datauristring");
+  return doc.output("base64" as any) as any;
 }
 
 interface IncidentExecutionCenterProps {
@@ -1088,7 +1088,7 @@ export default function IncidentExecutionCenter({
             else if (slaStr.includes("7 days") || slaStr.includes("medium")) targetHours = 168;
             else if (slaStr.includes("14 days") || slaStr.includes("low")) targetHours = 336;
 
-            const createdTime = new Date(issue.createdAt).getTime();
+            const createdTime = isNaN(new Date(issue.createdAt).getTime()) ? new Date().getTime() : new Date(issue.createdAt).getTime();
             const targetTime = createdTime + targetHours * 60 * 60 * 1000;
             const remainingMs = targetTime - currentTime;
             const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
@@ -1572,7 +1572,7 @@ export default function IncidentExecutionCenter({
                             </div>
                             <div className="flex justify-between sm:justify-start gap-2 bg-white/70 px-2 py-1.5 rounded border border-emerald-100/30">
                               <span className="text-slate-500">Delivered At:</span>
-                              <span>{new Date(dispatchedDetails.timestamp).toLocaleString()}</span>
+                              <span>{dispatchedDetails.timestamp ? new Date(dispatchedDetails.timestamp).toLocaleString() : "N/A"}</span>
                             </div>
                             {dispatchedDetails.messageId && (
                               <div className="sm:col-span-2 flex justify-between sm:justify-start gap-2 bg-white/70 px-2 py-1.5 rounded border border-emerald-100/30 truncate">

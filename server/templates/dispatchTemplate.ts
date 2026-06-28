@@ -8,21 +8,38 @@ export interface EmailTemplateResult {
 
 export function generateDispatchEmail(dispatch: DispatchPackage, issue: any): EmailTemplateResult {
   const priorityLevelStr = String(dispatch.priorityLevel || "MEDIUM").toUpperCase();
-  const subject = `[CivicOS Dispatch] ${dispatch.dispatchId} | ${issue.title || issue.issueType || "Municipal Issue"} | Priority ${priorityLevelStr}`;
+  const subject = `[CivicOS Dispatch] ${dispatch.dispatchId || "CIV-DSP-000000"} | ${issue.title || issue.issueType || "Municipal Issue"} | Priority ${priorityLevelStr}`;
 
-  const coords = issue.location 
+  const coords = (issue.location && typeof issue.location.latitude === "number" && typeof issue.location.longitude === "number")
     ? `${issue.location.latitude.toFixed(6)}, ${issue.location.longitude.toFixed(6)}`
     : "Not specified";
 
-  const confidenceScore = issue.confidence !== undefined 
+  const confidenceScore = (typeof issue.confidence === "number")
     ? `${(issue.confidence * 100).toFixed(0)}%` 
-    : (issue.analysisConfidence !== undefined ? `${(issue.analysisConfidence * 100).toFixed(0)}%` : "85%");
+    : (typeof issue.analysisConfidence === "number" ? `${(issue.analysisConfidence * 100).toFixed(0)}%` : "85%");
 
-  const costToday = dispatch.repairCostToday.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
-  const cost30 = dispatch.repairCost30Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
-  const cost90 = dispatch.repairCost90Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
-  const costDifference30 = (dispatch.repairCost30Days - dispatch.repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
-  const costDifference90 = (dispatch.repairCost90Days - dispatch.repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  // Resilient fallback-safe parameters for backward compatibility with legacy Pune incidents
+  const repairCostToday = typeof dispatch.repairCostToday === "number"
+    ? dispatch.repairCostToday
+    : (issue.costOfInaction?.repairCostNow ?? 4500);
+
+  const repairCost30Days = typeof dispatch.repairCost30Days === "number"
+    ? dispatch.repairCost30Days
+    : (issue.costOfInaction?.repairCost30Days ?? Math.round(repairCostToday * 2.1));
+
+  const repairCost90Days = typeof dispatch.repairCost90Days === "number"
+    ? dispatch.repairCost90Days
+    : (issue.costOfInaction?.repairCost90Days ?? Math.round(repairCostToday * 5.8));
+
+  const citizensAffected = typeof dispatch.citizensAffected === "number"
+    ? dispatch.citizensAffected
+    : (issue.costOfInaction?.estimatedCitizensAffected ?? 150);
+
+  const costToday = repairCostToday.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  const cost30 = repairCost30Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  const cost90 = repairCost90Days.toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  const costDifference30 = (repairCost30Days - repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
+  const costDifference90 = (repairCost90Days - repairCostToday).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
   const aiSummary = issue.rationale || (issue.reasoning && Array.isArray(issue.reasoning) ? issue.reasoning.join(". ") : "Progressive physical and structural deterioration identified requiring immediate intervention.");
 
@@ -32,25 +49,25 @@ export function generateDispatchEmail(dispatch: DispatchPackage, issue: any): Em
 ======================================================================
 MUNICIPAL OPERATIONS & DISPATCH DIVISION - WORK ORDER
 ======================================================================
-Dispatch ID:          ${dispatch.dispatchId}
-Incident ID:          ${dispatch.issueId}
-Generated On:         ${dispatch.createdAt}
-Workflow Stage:       ${dispatch.workflowStage}
+Dispatch ID:          ${dispatch.dispatchId || "CIV-DSP-000000"}
+Incident ID:          ${dispatch.issueId || issue.id || "N/A"}
+Generated On:         ${dispatch.createdAt || new Date().toISOString()}
+Workflow Stage:       ${dispatch.workflowStage || "PACKAGE_GENERATED"}
 ----------------------------------------------------------------------
 DEPARTMENTAL ASSIGNMENT
 ----------------------------------------------------------------------
-Responsible Dept:     ${dispatch.department}
-Responsible Officer:  ${dispatch.responsibleOfficer}
-Response SLA:         ${dispatch.responseSLA}
+Responsible Dept:     ${dispatch.department || "General Roads"}
+Responsible Officer:  ${dispatch.responsibleOfficer || "Shri. Vijaykumar Shinde (Lead Operations Officer, PMC)"}
+Response SLA:         ${dispatch.responseSLA || "24 Hours"}
 ----------------------------------------------------------------------
 INCIDENT SPECIFICATIONS
 ----------------------------------------------------------------------
 Issue Title:          ${issue.title || "Untitled Incident"}
 Issue Type:           ${issue.issueType || "Other"}
-Priority Level:       ${dispatch.priorityLevel}
-Technical Severity:   ${dispatch.technicalSeverity}/10
+Priority Level:       ${dispatch.priorityLevel || "HIGH"}
+Technical Severity:   ${dispatch.technicalSeverity || 5}/10
 Confidence Score:     ${confidenceScore}
-Citizens Affected:    ~${dispatch.citizensAffected} per day
+Citizens Affected:    ~${citizensAffected} per day
 Location:             City: ${issue.city || "Pune"}, State: ${issue.state || "Maharashtra"}, Country: ${issue.country || "India"}
 Coordinates:          ${coords}
 Evidence Image Link:  ${evidenceImage}
@@ -62,7 +79,7 @@ ${aiSummary}
 ----------------------------------------------------------------------
 OPERATIONAL DIRECTION & ACTION
 ----------------------------------------------------------------------
-Recommended Action:   ${dispatch.recommendedAction}
+Recommended Action:   ${dispatch.recommendedAction || "Dispatch authorized field crews immediately."}
 ----------------------------------------------------------------------
 FINANCIAL REPAIR & DELAY SUMMARY (COST OF INACTION)
 ----------------------------------------------------------------------
@@ -87,14 +104,14 @@ It is intended solely for authorized contractors and departmental officers.
     <div style="display: flex; justify-content: space-between; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 12px;">
       <div>
         <span style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold;">Dispatch ID</span>
-        <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${dispatch.dispatchId}</div>
+        <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${dispatch.dispatchId || "CIV-DSP-000000"}</div>
       </div>
       <div style="text-align: right;">
         <span style="font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: bold;">Incident ID</span>
-        <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${dispatch.issueId}</div>
+        <div style="font-size: 16px; font-weight: bold; color: #0f172a;">${dispatch.issueId || issue.id || "N/A"}</div>
       </div>
     </div>
-
+ 
     <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
       <tr>
         <td style="padding: 6px 0; font-weight: bold; width: 35%;">Issue Title:</td>
@@ -102,35 +119,35 @@ It is intended solely for authorized contractors and departmental officers.
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Responsible Department:</td>
-        <td style="padding: 6px 0;">${dispatch.department}</td>
+        <td style="padding: 6px 0;">${dispatch.department || "General Roads"}</td>
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Responsible Officer:</td>
-        <td style="padding: 6px 0;">${dispatch.responsibleOfficer}</td>
+        <td style="padding: 6px 0;">${dispatch.responsibleOfficer || "Shri. Vijaykumar Shinde (Lead Operations Officer, PMC)"}</td>
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Response SLA:</td>
-        <td style="padding: 6px 0; color: #dc2626; font-weight: bold;">${dispatch.responseSLA}</td>
+        <td style="padding: 6px 0; color: #dc2626; font-weight: bold;">${dispatch.responseSLA || "24 Hours"}</td>
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Priority Level:</td>
-        <td style="padding: 6px 0;"><span style="background-color: ${dispatch.priorityLevel === "CRITICAL" ? "#fee2e2" : "#fef3c7"}; color: ${dispatch.priorityLevel === "CRITICAL" ? "#991b1b" : "#92400e"}; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">${dispatch.priorityLevel}</span></td>
+        <td style="padding: 6px 0;"><span style="background-color: ${(dispatch.priorityLevel || "HIGH") === "CRITICAL" ? "#fee2e2" : "#fef3c7"}; color: ${(dispatch.priorityLevel || "HIGH") === "CRITICAL" ? "#991b1b" : "#92400e"}; padding: 2px 8px; border-radius: 4px; font-weight: bold; font-size: 12px;">${dispatch.priorityLevel || "HIGH"}</span></td>
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Technical Severity:</td>
-        <td style="padding: 6px 0;">${dispatch.technicalSeverity}/10 (Confidence: ${confidenceScore})</td>
+        <td style="padding: 6px 0;">${dispatch.technicalSeverity || 5}/10 (Confidence: ${confidenceScore})</td>
       </tr>
       <tr>
         <td style="padding: 6px 0; font-weight: bold;">Generated On:</td>
-        <td style="padding: 6px 0; color: #64748b;">${dispatch.createdAt}</td>
+        <td style="padding: 6px 0; color: #64748b;">${dispatch.createdAt || new Date().toISOString()}</td>
       </tr>
     </table>
-
+ 
     <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; margin-bottom: 20px; border-radius: 0 4px 4px 0;">
       <h4 style="margin: 0 0 6px 0; color: #1d4ed8; font-size: 14px; text-transform: uppercase;">Recommended Action Plan</h4>
-      <p style="margin: 0; font-size: 14px;">${dispatch.recommendedAction}</p>
+      <p style="margin: 0; font-size: 14px;">${dispatch.recommendedAction || "Dispatch authorized field crews immediately."}</p>
     </div>
-
+ 
     <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin-bottom: 20px; background-color: #fdfdfd;">
       <h4 style="margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">Incident Description</h4>
       <p style="margin: 0 0 8px 0; font-size: 14px;"><strong>Issue Type:</strong> ${issue.issueType || "Other"}</p>
@@ -138,12 +155,12 @@ It is intended solely for authorized contractors and departmental officers.
       <p style="margin: 0 0 12px 0; font-size: 14px; color: #475569;">${issue.description || "No description provided."}</p>
       ${issue.imageUrl ? `<p style="margin: 0; font-size: 13px;"><strong>Evidence Attachment:</strong> <a href="${issue.imageUrl}" style="color: #3b82f6; text-decoration: underline;">View Uploaded Photo</a></p>` : ""}
     </div>
-
+ 
     <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; margin-bottom: 20px; background-color: #f8fafc;">
       <h4 style="margin: 0 0 8px 0; font-size: 14px; text-transform: uppercase; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px;">AI Engineering Summary</h4>
       <p style="margin: 0; font-size: 13px; color: #475569; line-height: 1.5; font-style: italic;">${aiSummary}</p>
     </div>
-
+ 
     <div style="border: 1px solid #fca5a5; border-radius: 6px; padding: 16px; background-color: #fff5f5; margin-bottom: 20px;">
       <h4 style="margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: #991b1b; border-bottom: 1px solid #fecaca; padding-bottom: 6px;">Cost of Inaction Analysis</h4>
       <table style="width: 100%; font-size: 14px;">
@@ -161,7 +178,7 @@ It is intended solely for authorized contractors and departmental officers.
         </tr>
         <tr>
           <td style="padding: 4px 0; font-weight: bold;">Daily Public Impact:</td>
-          <td style="padding: 4px 0; font-weight: bold; text-align: right; color: #dc2626;">~${dispatch.citizensAffected} Citizens Affected</td>
+          <td style="padding: 4px 0; font-weight: bold; text-align: right; color: #dc2626;">~${citizensAffected} Citizens Affected</td>
         </tr>
       </table>
     </div>

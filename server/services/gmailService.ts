@@ -90,13 +90,17 @@ function buildMimeMessage(
   }
   cleanPdfBase64 = cleanPdfBase64.replace(/[\s\r\n]+/g, "").trim();
 
+  // Wrap to 76 characters per line for strict RFC 2045 MIME compliance
+  const base64Chunks = cleanPdfBase64.match(/.{1,76}/g);
+  const formattedPdfBase64 = base64Chunks ? base64Chunks.join("\r\n") : cleanPdfBase64;
+
   const attachmentParts = [
     `--${boundary}`,
     `Content-Type: application/pdf; name="${filename}"`,
     `Content-Disposition: attachment; filename="${filename}"`,
     "Content-Transfer-Encoding: base64",
     "",
-    cleanPdfBase64,
+    formattedPdfBase64,
     "",
     `--${boundary}--`,
   ];

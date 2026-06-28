@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
 import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
 import IncidentExecutionCenter from "./components/IncidentExecutionCenter";
+import CommissionerCopilot from "./components/CommissionerCopilot";
 import { GeminiAnalysis, SavedIssue } from "./types";
 
 const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -58,7 +59,7 @@ export default function App() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedIssuesList, setSavedIssuesList] = useState<SavedIssue[]>([]);
   const [loadingList, setLoadingList] = useState(false);
-  const [activeTab, setActiveTab] = useState<"command-center" | "map" | "execution-center" | "operations" | "reporter">("command-center");
+  const [activeTab, setActiveTab] = useState<"command-center" | "map" | "execution-center" | "operations" | "reporter" | "copilot">("command-center");
   const [selectedExecutionIssueId, setSelectedExecutionIssueId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -562,6 +563,17 @@ export default function App() {
               <Brain className="h-4 w-4" />
               <span>Operations Advisor</span>
             </button>
+            <button
+              onClick={() => setActiveTab("copilot")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold rounded-lg transition-all cursor-pointer ${
+                activeTab === "copilot"
+                  ? "bg-white text-indigo-600 shadow-sm"
+                  : "text-slate-600 hover:text-indigo-600"
+              }`}
+            >
+              <Cpu className="h-4 w-4" />
+              <span>Commissioner Copilot</span>
+            </button>
           </div>
           
           <div className="flex items-center space-x-2" id="system-status-container">
@@ -614,6 +626,18 @@ export default function App() {
             onClearNewlyUploaded={() => setNewlyUploadedIssueId(null)}
             initialSidebarTab={activeTab === "operations" ? "operations" : "gis"}
             onUpdateIssueStatus={handleUpdateIssueStatus}
+          />
+        ) : activeTab === "copilot" ? (
+          <CommissionerCopilot 
+            issues={savedIssuesList}
+            onRefresh={fetchIssues}
+            isLoading={loadingList}
+            onUpdateIssueStatus={handleUpdateIssueStatus}
+            onNavigateToTab={(tab: any) => setActiveTab(tab)}
+            onOpenExecution={(id) => {
+              setSelectedExecutionIssueId(id);
+              setActiveTab("execution-center");
+            }}
           />
         ) : (
           /* SPRINT 1: AI Autonomous Intake Hub view (Completely Preserved) */
