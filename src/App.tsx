@@ -174,6 +174,7 @@ export default function App() {
   // Load existing reports on mount and set up Realtime Firestore Sync
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let isMounted = true;
 
     const setupRealtimeSync = async () => {
       try {
@@ -182,9 +183,12 @@ export default function App() {
           throw new Error("Failed to fetch client Firebase configuration.");
         }
         const data = await response.json();
+        if (!isMounted) return;
+
         if (data.success && data.config) {
           const { initializeApp, getApps, getApp } = await import("firebase/app");
           const { getFirestore, collection, onSnapshot, query, orderBy } = await import("firebase/firestore");
+          if (!isMounted) return;
 
           let clientApp;
           const apps = getApps();
@@ -198,7 +202,7 @@ export default function App() {
           const clientDb = getFirestore(clientApp, data.config.databaseId);
           const q = query(collection(clientDb, "issues"), orderBy("createdAt", "desc"));
 
-          unsubscribe = onSnapshot(q, (snapshot) => {
+          const activeUnsubscribe = onSnapshot(q, (snapshot) => {
             const list: SavedIssue[] = [];
             snapshot.forEach((doc) => {
               list.push({ id: doc.id, ...(doc.data() as any) });
@@ -207,20 +211,27 @@ export default function App() {
             setSavedIssuesList(list);
           }, (err) => {
             console.error("🔗 [CIVICOS REALTIME] Firestore sync failed, falling back to HTTP polling:", err);
-            fetchIssues();
+            if (isMounted) fetchIssues();
           });
+
+          if (!isMounted) {
+            activeUnsubscribe();
+          } else {
+            unsubscribe = activeUnsubscribe;
+          }
         } else {
           fetchIssues();
         }
       } catch (err) {
         console.warn("🔗 [CIVICOS REALTIME] Realtime initialization failed, relying on ledger API polling:", err);
-        fetchIssues();
+        if (isMounted) fetchIssues();
       }
     };
 
     setupRealtimeSync();
 
     return () => {
+      isMounted = false;
       if (unsubscribe) {
         unsubscribe();
       }
@@ -264,7 +275,9 @@ export default function App() {
       const data = await response.json();
       if (data.success) {
         console.log(`[CIVICOS LIFE SYNC] Status updated for ${id} to ${newStatus}`);
-        fetchIssues(); // Refresh list to propagate everywhere
+        if (data.issue) {
+          setSavedIssuesList(prev => prev.map(item => item.id === id ? { ...item, ...data.issue } : item));
+        }
       } else {
         console.error("Failed to update status:", data.error);
       }
@@ -413,9 +426,15 @@ export default function App() {
         }
         if (responseData.issue) {
           setAnalysisResult(responseData.issue);
+          // Directly append the new issue to local state to ensure instant propagation across all components and avoid redundant fetchIssues()
+          setSavedIssuesList(prev => {
+            const exists = prev.some(item => item.id === responseData.issue.id);
+            if (exists) {
+              return prev.map(item => item.id === responseData.issue.id ? responseData.issue : item);
+            }
+            return [responseData.issue, ...prev];
+          });
         }
-        // Refresh the ledger
-        fetchIssues();
         // Switch tab to map and reset input elements after a brief duration
         setTimeout(() => {
           setActiveTab("map");

@@ -4,5 +4,8 @@ service cloud.firestore {
     match /issues/{issueId} {
       allow read, write: if true;
     }
+    match /registryCounters/{counterId} {
+      allow read, write: if true;
+    }
   }
 }

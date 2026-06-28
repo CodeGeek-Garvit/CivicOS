@@ -4,7 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from "firebase/app";
-import { initializeFirestore, collection, getDocs, query, orderBy, doc, setDoc, getDoc } from "firebase/firestore";
+import { initializeFirestore, collection, getDocs, query, orderBy, doc, setDoc, getDoc, limit } from "firebase/firestore";
 import dotenv from "dotenv";
 import { registerIssuesRoutes } from "./server/routes/issues";
 
@@ -75,7 +75,7 @@ async function seedDemoDatasetIfEnabled() {
   }
   
   try {
-    const q = query(collection(db, "issues"));
+    const q = query(collection(db, "issues"), limit(3));
     const snap = await getDocs(q);
     if (snap.size > 2) {
       console.log(`[CIVICOS SEEDER] Database already contains ${snap.size} issues. Skipping automatic demo dataset seeding.`);

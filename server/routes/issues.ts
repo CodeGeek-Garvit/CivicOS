@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { doc, setDoc, getDoc, collection, query, orderBy, getDocs } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, query, orderBy, getDocs, runTransaction } from "firebase/firestore";
 import { systemInstruction, promptText, visionPromptSchema } from "../prompts/visionPrompt";
 import { computeTechnicalSeverity, computeDeterministicConfidence } from "../engines/scoringEngine";
 import { computeOperationalPriority } from "../engines/priorityEngine";
@@ -610,9 +610,19 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       
       let sequenceNumber = 1;
       try {
-        const issuesSnap = await getDocs(collection(db, "issues"));
-        sequenceNumber = issuesSnap.size + 1;
+        const counterRef = doc(db, "registryCounters", "issues");
+        sequenceNumber = await runTransaction(db, async (transaction) => {
+          const counterDoc = await transaction.get(counterRef);
+          if (!counterDoc.exists()) {
+            transaction.set(counterRef, { current: 1 });
+            return 1;
+          }
+          const nextVal = (counterDoc.data().current || 0) + 1;
+          transaction.update(counterRef, { current: nextVal });
+          return nextVal;
+        });
       } catch (e) {
+        console.warn("[CIVICOS SERVER SEQUENCE] Counter transaction failed, falling back to random:", e);
         sequenceNumber = Math.floor(Math.random() * 1000) + 100;
       }
       
