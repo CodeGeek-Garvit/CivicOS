@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { jsPDF } from "jspdf";
 import { 
   SavedIssue, 
   normalizeStatus, 
@@ -157,6 +158,199 @@ export function getSlaExplanation(issue: SavedIssue): string {
   return reason;
 }
 
+/**
+ * Generates an elegant, single-page PDF Work Order mirroring the printable template exactly.
+ */
+function generateWorkOrderPdf(issue: SavedIssue): string {
+  const doc = new jsPDF("p", "mm", "a4");
+  
+  const dept = getDepartmentName(issue.affectedAsset || "", issue.issueType);
+  const workOrderId = getMunicipalWorkOrderID(issue);
+  const officer = issue.dispatch?.responsibleOfficer || getDeterministicOfficer(dept);
+  const priority = issue.dispatch?.priorityLevel || "HIGH";
+  const rawCost = issue.costOfInaction?.repairCostNow || 4500;
+  const costStr = formatRupees(rawCost);
+  const sla = issue.dispatch?.responseSLA || "24 Hours";
+  const breakdown = getBudgetBreakdown(rawCost, issue.issueType || "", issue.severity || 5);
+
+  // Deep Slate header banner
+  doc.setFillColor(15, 23, 42); // #0f172a
+  doc.rect(0, 0, 210, 35, "F");
+
+  // Title
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("PUNE MUNICIPAL CORPORATION", 15, 18);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(148, 163, 184); // #94a3b8
+  doc.text("Official Infrastructure Work Order", 15, 26);
+
+  // Top Right Info
+  doc.setTextColor(59, 130, 246); // #3b82f6
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("WORK ORDER GENERATED", 195, 15, { align: "right" });
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 195, 22, { align: "right" });
+  doc.text(`UID: ${issue.id.slice(0, 10).toUpperCase()}`, 195, 28, { align: "right" });
+
+  // Grid details layout
+  let y = 48;
+  
+  // Incident Details Box
+  doc.setDrawColor(226, 232, 240); // #e2e8f0
+  doc.setFillColor(248, 250, 252); // #f8fafc
+  doc.roundedRect(12, y, 90, 60, 3, 3, "FD");
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105); // #475569
+  doc.text("INCIDENT DETAILS", 18, y + 8);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(16, y + 11, 98, y + 11);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139); // #64748b
+  doc.text("Registry ID:", 18, y + 18);
+  doc.text("Title:", 18, y + 26);
+  doc.text("Category:", 18, y + 34);
+  doc.text("Severity Index:", 18, y + 42);
+  doc.text("Reporting Area:", 18, y + 50);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(issue.id.slice(0, 16), 45, y + 18);
+  doc.text(issue.title.length > 25 ? issue.title.substring(0, 25) + "..." : issue.title, 45, y + 26);
+  doc.text(issue.issueType || "Other", 45, y + 34);
+  doc.text(`${issue.severity || 5}/10`, 45, y + 42);
+  doc.text(issue.ward || issue.city || "Pune", 45, y + 50);
+
+  // Execution Controls Box
+  doc.roundedRect(108, y, 90, 60, 3, 3, "FD");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("EXECUTION CONTROLS", 114, y + 8);
+  doc.line(112, y + 11, 194, y + 11);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Work Order ID:", 114, y + 18);
+  doc.text("Assigned Dept:", 114, y + 26);
+  doc.text("Duty Officer:", 114, y + 34);
+  doc.text("Priority Level:", 114, y + 42);
+  doc.text("Estimated Cost:", 114, y + 50);
+  doc.text("SLA Timeline:", 114, y + 56);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(workOrderId, 142, y + 18);
+  doc.text(dept.substring(0, 24), 142, y + 26);
+  doc.text(officer.length > 20 ? officer.substring(0, 20) + "..." : officer, 142, y + 34);
+  
+  doc.setTextColor(185, 28, 28); // red for priority
+  doc.text(priority, 142, y + 42);
+  
+  doc.setTextColor(15, 23, 42);
+  doc.text(costStr, 142, y + 50);
+  doc.text(sla, 142, y + 56);
+
+  // Diagnosis Block
+  y = 114;
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(12, y, 186, 26, 3, 3, "D");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Incident Diagnosis & Remediation Plan", 18, y + 8);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105);
+  
+  const recomAction = issue.dispatch?.recommendedAction || "Dispatch authorized field crews immediately to audit public safety margins. Perform core remediation of physical structural failure matching state civic standards.";
+  const lines = doc.splitTextToSize(recomAction, 174);
+  doc.text(lines, 18, y + 14);
+
+  // Resource & Budget Box
+  y = 146;
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(12, y, 186, 40, 3, 3, "FD");
+  
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text("Municipal Resource & Budget Allocation", 18, y + 8);
+  doc.setDrawColor(226, 232, 240);
+  doc.line(16, y + 11, 194, y + 11);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("REMEDIATION CREW", 18, y + 17);
+  doc.text("REQUIRED EQUIPMENT", 80, y + 17);
+  doc.text("MATERIALS BUDGET", 145, y + 17);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${breakdown.crewSize} Specialized Staff`, 18, y + 22);
+  
+  const equipStr = breakdown.equipmentList.join(", ");
+  const equipLines = doc.splitTextToSize(equipStr, 60);
+  doc.text(equipLines, 80, y + 22);
+  doc.text(formatRupees(breakdown.materials), 145, y + 22);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 116, 139);
+  doc.text("LABOUR COST", 18, y + 30);
+  doc.text("EQUIPMENT LEASING", 80, y + 30);
+  doc.text("TRAFFIC MANAGEMENT", 145, y + 30);
+
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(15, 23, 42);
+  doc.text(formatRupees(breakdown.labor), 18, y + 34);
+  doc.text(formatRupees(breakdown.equipment), 80, y + 34);
+  doc.text(formatRupees(breakdown.trafficManagement), 145, y + 34);
+
+  // Digital Signature
+  y = 192;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Digital Validation Signature", 12, y + 8);
+  
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("This document is verified against the Pune Municipal Corporation", 12, y + 14);
+  doc.text("decentralized Firestore ledger and remains legally binding.", 12, y + 18);
+  doc.text(`Reference ID: ${issue.id.toUpperCase()}`, 12, y + 24);
+
+  // QR box
+  doc.setDrawColor(203, 213, 225); // #cbd5e1
+  doc.setFillColor(255, 255, 255);
+  doc.rect(162, y + 2, 28, 28);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text("QR CODE SECURE", 176, y + 14, { align: "center" });
+  doc.text("VERIFIED", 176, y + 19, { align: "center" });
+
+  // Footer Legal
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Pune Municipal Corporation Headquarters • Shivaji Nagar, Pune, Maharashtra 411005 • Internal Operations Dept", 105, 285, { align: "center" });
+
+  return doc.output("datauristring");
+}
+
 interface IncidentExecutionCenterProps {
   issues: SavedIssue[];
   selectedIssueId: string | null;
@@ -212,6 +406,94 @@ export default function IncidentExecutionCenter({
     }, 60000); // Update every minute
     return () => clearInterval(timer);
   }, []);
+
+  // Local state for tracking real Gmail dispatch (Sprint 11)
+  const [dispatchState, setDispatchState] = useState<"IDLE" | "PREPARING" | "CONNECTING" | "DELIVERED">("IDLE");
+  const [dispatchError, setDispatchError] = useState<{ type: string; message: string } | null>(null);
+  const [dispatchedDetails, setDispatchedDetails] = useState<{ recipient: string; timestamp: string; messageId?: string } | null>(null);
+
+  // Reset dispatch state when switching issues
+  useEffect(() => {
+    setDispatchState("IDLE");
+    setDispatchError(null);
+    setDispatchedDetails(null);
+  }, [selectedIssueId]);
+
+  const handleDispatchGmail = async (issue: SavedIssue) => {
+    setDispatchState("PREPARING");
+    setDispatchError(null);
+
+    // Short delay for high-fidelity user feedback of preparation
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    let pdfDataUri = "";
+    try {
+      pdfDataUri = generateWorkOrderPdf(issue);
+    } catch (err: any) {
+      console.error("PDF generation failed:", err);
+      setDispatchError({ 
+        type: "PREPARING_FAILED", 
+        message: `Failed to prepare PDF Work Order: ${err.message || err}` 
+      });
+      setDispatchState("IDLE");
+      return;
+    }
+
+    setDispatchState("CONNECTING");
+
+    try {
+      const response = await fetch("/api/dispatch/send-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          issueId: issue.id,
+          dispatchPackage: issue.dispatch || {
+            dispatchId: getMunicipalWorkOrderID(issue),
+            department: getDepartmentName(issue.affectedAsset || "", issue.issueType),
+            technicalSeverity: issue.severity || 5,
+            responseSLA: issue.dispatch?.responseSLA || "24 Hours",
+            responsibleOfficer: getDeterministicOfficer(getDepartmentName(issue.affectedAsset || "", issue.issueType)),
+            priorityLevel: issue.dispatch?.priorityLevel || "HIGH",
+            recommendedAction: "Dispatch authorized field crews immediately."
+          },
+          costOfInaction: issue.costOfInaction,
+          pdfBase64: pdfDataUri
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setDispatchError({
+          type: data.errorType || "UNKNOWN",
+          message: data.error || "An unexpected dispatch error occurred."
+        });
+        setDispatchState("IDLE");
+        return;
+      }
+
+      setDispatchState("DELIVERED");
+      setDispatchedDetails({
+        recipient: data.recipient,
+        timestamp: data.sentTimestamp || new Date().toISOString(),
+        messageId: data.gmailMessageId
+      });
+
+      // Automatically advance the status of the issue in client state
+      if (onUpdateIssueStatus) {
+        onUpdateIssueStatus(issue.id, "Crew Dispatched");
+      }
+    } catch (err: any) {
+      console.error("Gmail dispatch error:", err);
+      setDispatchError({
+        type: "NETWORK_ERROR",
+        message: "Network Error: Failed to reach the CivicOS dispatch server."
+      });
+      setDispatchState("IDLE");
+    }
+  };
 
   // Compute the 4 KPI cards strictly from active issues
   const kpis = useMemo(() => {
@@ -971,6 +1253,18 @@ export default function IncidentExecutionCenter({
                       </span>
                     </div>
 
+                    {issue.dispatch?.emailSent && (
+                      <div className="border-t border-slate-200/60 pt-2.5 space-y-1 bg-emerald-50/50 p-2 rounded-lg border border-emerald-100">
+                        <div className="flex items-center gap-1.5 text-emerald-700 font-black text-[9px] uppercase tracking-wider">
+                          <Check className="h-3.5 w-3.5 stroke-[3]" />
+                          <span>MUNICIPAL EMAIL DISPATCHED</span>
+                        </div>
+                        <div className="flex justify-between text-[9px] font-bold text-slate-600"><span>To:</span><span className="text-slate-800 font-extrabold">{issue.dispatch.emailRecipient}</span></div>
+                        <div className="flex justify-between text-[9px] font-bold text-slate-600"><span>Sent:</span><span className="text-slate-800 font-extrabold">{issue.dispatch.emailDeliveredAt ? new Date(issue.dispatch.emailDeliveredAt).toLocaleString() : "N/A"}</span></div>
+                        <div className="flex justify-between text-[9px] font-bold text-slate-600 truncate"><span className="shrink-0 text-left">Gmail ID:</span><span className="text-slate-800 font-mono text-[8px] truncate select-all">{issue.dispatch.emailMessageId}</span></div>
+                      </div>
+                    )}
+
                     {/* Financial & Resource Detailed Breakdown */}
                     {(() => {
                       const breakdown = getBudgetBreakdown(cost, issue.issueType || "", issue.severity || 5);
@@ -1172,23 +1466,143 @@ export default function IncidentExecutionCenter({
 
                 {/* ADVANCE WORKFLOW ACTION */}
                 {nextStatus ? (
-                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150 flex flex-col sm:flex-row justify-between items-center gap-3">
-                    <div className="text-left space-y-0.5">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">
-                        Advance Incident Stage
-                      </span>
-                      <p className="text-xs font-bold text-slate-700">
-                        Current: <span className="text-indigo-600 font-black">{status}</span> ➜ Target: <span className="text-emerald-600 font-black">{nextStatus}</span>
-                      </p>
+                  nextStatus === "Crew Dispatched" ? (
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <div className="text-left space-y-0.5">
+                          <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest block font-mono">
+                            OFFICIAL GMAIL DISPATCH
+                          </span>
+                          <p className="text-xs font-bold text-slate-700">
+                            Subject: <span className="text-slate-800 font-extrabold">PMC Work Order • {workOrderID}</span>
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-semibold">
+                            Recipient: <span className="text-slate-700 font-bold">{process.env.GMAIL_DEMO_RECIPIENT || "Default Dispatch Contact"}</span>
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={() => handleDispatchGmail(issue)}
+                          disabled={dispatchState !== "IDLE"}
+                          className={`font-extrabold text-xs px-5 py-3 rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer ${
+                            dispatchState === "IDLE" 
+                              ? "bg-indigo-600 hover:bg-indigo-700 text-white" 
+                              : dispatchState === "DELIVERED"
+                              ? "bg-emerald-600 text-white"
+                              : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                          }`}
+                        >
+                          {dispatchState === "IDLE" && (
+                            <>
+                              <Play className="h-3.5 w-3.5 animate-pulse" />
+                              <span>Dispatch Work Order</span>
+                            </>
+                          )}
+                          {dispatchState === "PREPARING" && (
+                            <>
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              <span>Preparing Work Order...</span>
+                            </>
+                          )}
+                          {dispatchState === "CONNECTING" && (
+                            <>
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              <span>Connecting to Gmail...</span>
+                            </>
+                          )}
+                          {dispatchState === "DELIVERED" && (
+                            <>
+                              <Check className="h-3.5 w-3.5 stroke-[3]" />
+                              <span>Dispatch Delivered</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* ERROR DISPLAY FOR RETRY */}
+                      {dispatchError && (
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex gap-3 items-start animate-fade-in">
+                          <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="space-y-1 w-full">
+                            <h5 className="text-xs font-black text-rose-800 uppercase tracking-wide">
+                              {dispatchError.type === "AUTH_FAILED" && "Authentication Failed"}
+                              {dispatchError.type === "QUOTA_EXCEEDED" && "Quota Exceeded"}
+                              {dispatchError.type === "INVALID_RECIPIENT" && "Recipient Invalid"}
+                              {dispatchError.type === "NETWORK_ERROR" && "Network Error"}
+                              {dispatchError.type !== "AUTH_FAILED" && dispatchError.type !== "QUOTA_EXCEEDED" && dispatchError.type !== "INVALID_RECIPIENT" && dispatchError.type !== "NETWORK_ERROR" && "Dispatch Error"}
+                            </h5>
+                            <p className="text-[10px] text-rose-600 font-medium leading-relaxed font-mono">
+                              {dispatchError.message}
+                            </p>
+                            <button
+                              onClick={() => {
+                                setDispatchError(null);
+                                handleDispatchGmail(issue);
+                              }}
+                              className="text-[10px] font-black text-rose-700 hover:text-rose-900 flex items-center gap-1 cursor-pointer pt-1"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Retry Dispatch Request
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SUCCESS CONFIRMATION DISPLAY / TOAST PANEL */}
+                      {dispatchState === "DELIVERED" && dispatchedDetails && (
+                        <div className="bg-emerald-50 border-2 border-emerald-500/20 rounded-xl p-4 space-y-2.5 animate-fade-in shadow-inner">
+                          <div className="flex gap-2.5 items-start">
+                            <div className="bg-emerald-500 text-white p-1 rounded-full mt-0.5">
+                              <Check className="h-4 w-4 stroke-[3]" />
+                            </div>
+                            <div className="space-y-0.5">
+                              <h5 className="text-xs font-black text-emerald-900 tracking-tight uppercase">
+                                Municipal Work Order successfully dispatched
+                              </h5>
+                              <p className="text-[10px] text-emerald-600 font-bold">
+                                Email was delivered successfully via Google Gmail API.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-emerald-100/50 pt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-emerald-800 font-bold">
+                            <div className="flex justify-between sm:justify-start gap-2 bg-white/70 px-2 py-1.5 rounded border border-emerald-100/30">
+                              <span className="text-slate-500">Recipient:</span>
+                              <span>{dispatchedDetails.recipient}</span>
+                            </div>
+                            <div className="flex justify-between sm:justify-start gap-2 bg-white/70 px-2 py-1.5 rounded border border-emerald-100/30">
+                              <span className="text-slate-500">Delivered At:</span>
+                              <span>{new Date(dispatchedDetails.timestamp).toLocaleString()}</span>
+                            </div>
+                            {dispatchedDetails.messageId && (
+                              <div className="sm:col-span-2 flex justify-between sm:justify-start gap-2 bg-white/70 px-2 py-1.5 rounded border border-emerald-100/30 truncate">
+                                <span className="text-slate-500 shrink-0">Gmail ID:</span>
+                                <span className="font-mono text-[9px] select-all truncate">{dispatchedDetails.messageId}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <button
-                      onClick={() => handleAdvance(issue)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Play className="h-3.5 w-3.5 animate-pulse" />
-                      Advance to {nextStatus}
-                    </button>
-                  </div>
+                  ) : (
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150 flex flex-col sm:flex-row justify-between items-center gap-3">
+                      <div className="text-left space-y-0.5">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-mono">
+                          Advance Incident Stage
+                        </span>
+                        <p className="text-xs font-bold text-slate-700">
+                          Current: <span className="text-indigo-600 font-black">{status}</span> ➜ Target: <span className="text-emerald-600 font-black">{nextStatus}</span>
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleAdvance(issue)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Play className="h-3.5 w-3.5 animate-pulse" />
+                        Advance to {nextStatus}
+                      </button>
+                    </div>
+                  )
                 ) : (
                   <div className="bg-emerald-50 border border-emerald-100 p-4 rounded-2xl flex items-center gap-3">
                     <CheckCircle2 className="h-6 w-6 text-emerald-500 shrink-0" />

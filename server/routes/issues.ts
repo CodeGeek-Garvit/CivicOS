@@ -7,6 +7,7 @@ import { getResponsibleDepartment } from "../engines/departmentEngine";
 import { getResponseSLA } from "../engines/slaEngine";
 import { computeCostOfInaction } from "../engines/costEngine";
 import { buildDispatchPackage, runAutonomousDispatchPipeline } from "../engines/dispatchEngine";
+import { sendDispatchEmail } from "../services/gmailService";
 
 // Fallback logic representing a realistic perception engine response
 function getCategoryAwareFallbackPerception(fileName: string = "") {
@@ -701,5 +702,113 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       console.error("❌ [CIVICOS UPDATE PIPELINE] Firestore Patch Failed:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
+  });
+
+  // POST /api/dispatch/send-email (Sprint 11 Real Gmail Dispatch)
+  app.post("/api/dispatch/send-email", async (req: Request, res: Response) => {
+    const { issueId, dispatchPackage, costOfInaction, pdfBase64 } = req.body;
+
+    console.log(`\n==================================================`);
+    console.log(`📥 [CIVICOS DISPATCH ROUTE] POST /api/dispatch/send-email`);
+    console.log(`- Issue ID: ${issueId}`);
+    console.log(`- Dispatch ID: ${dispatchPackage?.dispatchId}`);
+    console.log(`==================================================\n`);
+
+    if (!issueId || !dispatchPackage) {
+      return res.status(400).json({ success: false, error: "Missing issueId or dispatchPackage" });
+    }
+
+    let issue: any = null;
+
+    // 1. Fetch issue details from db or in-memory
+    if (isFirestoreAvailable && db) {
+      try {
+        const docRef = doc(db, "issues", issueId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          issue = docSnap.data();
+        }
+      } catch (err: any) {
+        console.error("Warning: Failed to fetch issue from Firestore, constructing fallback:", err);
+      }
+    } else {
+      issue = inMemoryIssues.find(i => i.id === issueId);
+    }
+
+    // Fallback if issue not in DB
+    if (!issue) {
+      issue = {
+        id: issueId,
+        title: dispatchPackage.recommendedAction ? `Remediation for Incident ${issueId}` : "Municipal Incident",
+        issueType: dispatchPackage.department || "Other",
+        severity: dispatchPackage.technicalSeverity || 5,
+        city: "Pune",
+        state: "Maharashtra",
+        country: "India",
+        description: "Official municipal ticket assigned for dispatch action."
+      };
+    }
+
+    // 2. Call Gmail Service
+    const emailResult = await sendDispatchEmail(dispatchPackage, issue, pdfBase64 || "");
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        error: emailResult.error || "Failed to dispatch email",
+        errorType: emailResult.errorType || "UNKNOWN"
+      });
+    }
+
+    // 3. Update issue record in DB with the required firestore delivery fields
+    const dispatchUpdates = {
+      ...dispatchPackage,
+      emailSent: true,
+      emailRecipient: emailResult.recipient,
+      emailMessageId: emailResult.gmailMessageId || "mock_gmail_msg_id",
+      emailDeliveredAt: emailResult.sentTimestamp,
+      dispatchStatus: "SENT",
+      workflowStage: "EMAIL_SENT"
+    };
+
+    if (isFirestoreAvailable && db) {
+      try {
+        const docRef = doc(db, "issues", issueId);
+        const docSnap = await getDoc(docRef);
+        const currentData = docSnap.exists() ? docSnap.data() : {};
+        
+        const updatedData = {
+          ...currentData,
+          dispatch: {
+            ...(currentData.dispatch || {}),
+            ...dispatchUpdates
+          }
+        };
+
+        await setDoc(docRef, updatedData);
+        console.log(`✅ [CIVICOS DISPATCH ROUTE] Updated Firestore issue ${issueId} with dispatch info.`);
+      } catch (dbError: any) {
+        console.error("❌ [CIVICOS DISPATCH ROUTE] Failed to update Firestore with dispatch delivery data:", dbError);
+      }
+    } else {
+      const idx = inMemoryIssues.findIndex(i => i.id === issueId);
+      if (idx !== -1) {
+        inMemoryIssues[idx] = {
+          ...inMemoryIssues[idx],
+          dispatch: {
+            ...(inMemoryIssues[idx].dispatch || {}),
+            ...dispatchUpdates
+          }
+        };
+        console.log(`✅ [CIVICOS DISPATCH ROUTE] Updated in-memory issue ${issueId} with dispatch info.`);
+      }
+    }
+
+    return res.json({
+      success: true,
+      recipient: emailResult.recipient,
+      gmailMessageId: emailResult.gmailMessageId,
+      sentTimestamp: emailResult.sentTimestamp
+    });
   });
 }
