@@ -145,7 +145,7 @@ export const STATUS_TRANSITIONS: Record<IncidentStatus, IncidentStatus[]> = {
 export function normalizeStatus(status: any): IncidentStatus {
   if (!status) return "Reported";
   const s = String(status).toLowerCase().replace(/_/g, " ").trim();
-  if (s === "reported") return "Reported";
+  if (s === "reported" || s === "approved") return "Reported";
   if (s === "verified") return "Verified";
   if (s === "assigned") return "Assigned";
   if (s === "crew dispatched" || s === "dispatched" || s === "en route" || s === "crew_dispatched") return "Crew Dispatched";

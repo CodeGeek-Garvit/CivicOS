@@ -404,7 +404,8 @@ export default function App() {
         country: isLiveMode && userLocation ? userLocation.country : "India",
         locationSource: isLiveMode ? (GOOGLE_MAPS_KEY ? "ReverseGeocoded" : "GPS") : "DemoSeed",
         markerSource: isLiveMode ? "LIVE_UPLOAD" : "DEMO_DATA",
-        isDemoMode: !isLiveMode
+        isDemoMode: !isLiveMode,
+        status: "Submitted"
       }
     };
 
@@ -727,7 +728,10 @@ export default function App() {
         ) : activeTab === "execution-center" ? (
           /* SPRINT 10 CENTERPIECE: Incident Execution Center view */
           <IncidentExecutionCenter
-            issues={savedIssuesList}
+            issues={savedIssuesList.filter(item => {
+              const statusLower = String(item.status || "").toLowerCase();
+              return statusLower !== "submitted" && statusLower !== "reported" && statusLower !== "rejected" && statusLower !== "manual review";
+            })}
             selectedIssueId={selectedExecutionIssueId}
             onSelectIssueId={(id) => setSelectedExecutionIssueId(id)}
             onReturnToCommandCenter={() => setActiveTab("command-center")}
@@ -1735,47 +1739,107 @@ It is intended solely for authorized contractors and departmental officers.
                 </div>
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto pr-1" id="ledger-list">
-                  {savedIssuesList.map((item) => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => {
-                        setAnalysisResult(item);
-                        setSelectedImage(item.imageUrl);
-                      }}
-                      className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start cursor-pointer hover:shadow-sm"
-                      id={`ledger-item-${item.id}`}
-                    >
-                      {item.imageUrl && (
-                        <img 
-                          src={item.imageUrl} 
-                          alt="Evidence preview" 
-                          className="h-16 w-16 rounded-lg object-cover bg-white border border-slate-200 shrink-0"
-                        />
-                      )}
-                      <div className="space-y-1 min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getCategoryDetails(item.issueType).color}`}>
-                            {getCategoryDetails(item.issueType).label}
-                          </span>
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getSeverityStyle(item.severity).bg} ${getSeverityStyle(item.severity).text} ${getSeverityStyle(item.severity).border}`}>
-                            Sev: {item.severity}
-                          </span>
-                          {item.isFallback ? (
-                            <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded uppercase font-sans">
-                              Fallback Analysis
+                  {savedIssuesList.map((item) => {
+                    const displayStatus = (item.status === "reported" || !item.status || item.status.toLowerCase() === "submitted") ? "Submitted" : item.status;
+                    return (
+                      <div 
+                        key={item.id} 
+                        onClick={() => {
+                          setAnalysisResult(item);
+                          setSelectedImage(item.imageUrl);
+                        }}
+                        className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start cursor-pointer hover:shadow-sm"
+                        id={`ledger-item-${item.id}`}
+                      >
+                        {item.imageUrl && (
+                          <img 
+                            src={item.imageUrl} 
+                            alt="Evidence preview" 
+                            className="h-16 w-16 rounded-lg object-cover bg-white border border-slate-200 shrink-0"
+                          />
+                        )}
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getCategoryDetails(item.issueType).color}`}>
+                              {getCategoryDetails(item.issueType).label}
                             </span>
-                          ) : (
-                            <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded uppercase font-sans">
-                              Gemini Analysis
+                            <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getSeverityStyle(item.severity).bg} ${getSeverityStyle(item.severity).text} ${getSeverityStyle(item.severity).border}`}>
+                              Sev: {item.severity}
                             </span>
-                          )}
+                            {item.isFallback ? (
+                              <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded uppercase font-sans">
+                                Fallback Analysis
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded uppercase font-sans">
+                                Gemini Analysis
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
+                          <p className="text-[11px] text-slate-600 font-medium line-clamp-1">{item.description}</p>
+                          <p className="text-[10px] text-slate-400 font-mono font-medium">ID: {item.id} • {new Date(item.createdAt).toLocaleString()}</p>
+
+                          {/* SPRINT ACTIONS: Approve, Manual Review, Reject */}
+                          <div className="pt-3 border-t border-slate-200/60 mt-3 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Status:</span>
+                              <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${
+                                displayStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                displayStatus === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                displayStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}>
+                                {displayStatus}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateIssueStatus(item.id, "Approved");
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                                  displayStatus === "Approved"
+                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                    : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                                }`}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateIssueStatus(item.id, "Manual Review");
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                                  displayStatus === "Manual Review"
+                                    ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                                    : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
+                                }`}
+                              >
+                                Manual Review
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateIssueStatus(item.id, "Rejected");
+                                }}
+                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                                  displayStatus === "Rejected"
+                                    ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                                    : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+                                }`}
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
-                        <p className="text-[11px] text-slate-600 font-medium line-clamp-1">{item.description}</p>
-                        <p className="text-[10px] text-slate-400 font-mono font-medium">ID: {item.id} • {new Date(item.createdAt).toLocaleString()}</p>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

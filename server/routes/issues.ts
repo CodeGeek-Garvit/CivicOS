@@ -561,7 +561,7 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       reasoning: Array.isArray(issue.reasoning) ? issue.reasoning : (basicPerception.reasoning || []),
       imageUrl: issue.imageUrl || "",
       isFallback: issue.isFallback ?? false,
-      status: issue.status || "reported",
+      status: issue.status || "Submitted",
       createdAt: issue.createdAt || new Date().toISOString(),
       location: (issue.location && typeof issue.location.latitude === "number" && typeof issue.location.longitude === "number")
         ? { latitude: issue.location.latitude, longitude: issue.location.longitude }

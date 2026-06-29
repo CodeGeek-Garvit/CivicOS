@@ -86,48 +86,68 @@ export default function ExecutiveCommandCenter({
   // SECTION 1: City Health Score and contributing factors
   // ----------------------------------------------------
   const healthStats = useMemo(() => {
-    const score = decisionData.infrastructureHealthIndex;
-    const totalActive = activeIssuesList.length;
-    const criticalActive = activeIssuesList.filter(i => (i.severity || 0) >= 8).length;
-    const avgSeverity = totalActive > 0 ? activeIssuesList.reduce((sum, i) => sum + (i.severity || 5), 0) / totalActive : 0;
+    const totalCount = activeIssuesList.length;
+    const resolvedCount = activeIssuesList.filter(i => {
+      const s = String(i.status || "").toLowerCase();
+      return s === "resolved" || s === "closed";
+    }).length;
+    
+    const unresolvedCount = totalCount - resolvedCount;
+    const criticalUnresolved = activeIssuesList.filter(i => {
+      const s = String(i.status || "").toLowerCase();
+      return (i.severity || 0) >= 8 && s !== "resolved" && s !== "closed";
+    }).length;
+    
+    const resolvedPercentage = totalCount > 0 ? (resolvedCount / totalCount) * 100 : 100;
+    const criticalRatio = unresolvedCount > 0 ? (criticalUnresolved / unresolvedCount) * 100 : 0;
+    
+    // SLA compliance
+    const slaIssues = activeIssuesList.map(i => getSLAStatus(i.createdAt, i.dispatch?.responseSLA, i.completionTime));
+    const onTrackCount = slaIssues.filter(sla => sla.onTrack).length;
+    const slaCompliance = totalCount > 0 ? (onTrackCount / totalCount) * 100 : 100;
+
+    // Health Score calculation (starts at 100, drops for negative indicators)
+    // 1. Unresolved volume penalty: up to 25 points
+    const unresolvedPenalty = Math.min(25, (unresolvedCount / 15) * 25);
+    
+    // 2. Critical issue ratio penalty: up to 25 points
+    const criticalPenalty = Math.min(25, (criticalRatio / 50) * 25);
+    
+    // 3. SLA compliance penalty: up to 25 points penalty if compliance is low
+    const slaPenalty = Math.max(0, 100 - slaCompliance) * 0.25;
+    
+    // 4. Resolved percentage bonus: adds up to 15 points
+    const resolutionBonus = (resolvedPercentage / 100) * 15;
+    
+    let calculatedScore = Math.round(100 - unresolvedPenalty - criticalPenalty - slaPenalty + resolutionBonus);
+    calculatedScore = Math.max(10, Math.min(100, calculatedScore));
+
+    const avgSeverity = totalCount > 0 ? activeIssuesList.reduce((sum, i) => sum + (i.severity || 5), 0) / totalCount : 0;
     const totalLiability90 = activeIssuesList.reduce((sum, i) => sum + (i.costOfInaction?.repairCost90Days || 15750), 0);
 
-    // Calculate maximum incidents in any single department
-    const deptsCountMap: Record<string, number> = {};
-    activeIssuesList.forEach(i => {
-      const d = getDepartmentName(i.affectedAsset || "", i.issueType);
-      deptsCountMap[d] = (deptsCountMap[d] || 0) + 1;
-    });
-    const maxDeptCount = Object.keys(deptsCountMap).length > 0 ? Math.max(...Object.values(deptsCountMap)) : 0;
-
-    // Deductions matching the decisionEngine.ts formula exactly
-    const volumePenalty = Math.min(20, (totalActive / 30) * 20);
-    const criticalRatio = totalActive > 0 ? criticalActive / totalActive : 0;
-    const criticalPenalty = criticalRatio * 30;
-    const severityPenalty = (avgSeverity / 10) * 25;
-    const liabilityPenalty = Math.min(15, (totalLiability90 / 500000) * 15);
-    const concentrationRatio = totalActive > 0 ? maxDeptCount / totalActive : 0;
-    const concentrationPenalty = concentrationRatio * 10;
-
     const reasons: Array<{ label: string; penalty: number; value: string }> = [];
-    if (volumePenalty > 0) {
-      reasons.push({ label: "Incident Registry Volume", penalty: volumePenalty, value: `${totalActive} active incidents` });
+    if (unresolvedCount > 0) {
+      reasons.push({ label: "Unresolved Active Volume", penalty: unresolvedPenalty, value: `${unresolvedCount} unresolved cases` });
     }
-    if (criticalPenalty > 0) {
-      reasons.push({ label: "Critical Hazard Ratio", penalty: criticalPenalty, value: `${criticalActive} critical issues (${Math.round(criticalRatio * 100)}%)` });
+    if (criticalUnresolved > 0) {
+      reasons.push({ label: "Critical Hazard Ratio", penalty: criticalPenalty, value: `${criticalUnresolved} critical unresolved (${Math.round(criticalRatio)}%)` });
     }
-    if (severityPenalty > 0) {
-      reasons.push({ label: "Average Incident Severity", penalty: severityPenalty, value: `${avgSeverity.toFixed(1)}/10 avg severity` });
+    if (slaCompliance < 100) {
+      reasons.push({ label: "SLA Response Compliance", penalty: slaPenalty, value: `${Math.round(slaCompliance)}% SLA compliant` });
     }
-    if (liabilityPenalty > 0) {
-      reasons.push({ label: "Projected 90-Day Liability", penalty: liabilityPenalty, value: formatRupees(totalLiability90) });
-    }
-    if (concentrationPenalty > 0) {
-      reasons.push({ label: "Departmental Concentration", penalty: concentrationPenalty, value: `Peak department workload: ${maxDeptCount} issues` });
+    if (resolvedCount > 0) {
+      reasons.push({ label: "Resolution Health Factor", penalty: -resolutionBonus, value: `${resolvedCount} resolved cases (+${Math.round(resolutionBonus)} pts)` });
     }
 
-    return { score, reasons, totalActive, criticalActive, avgSeverity, totalLiability90 };
-  }, [decisionData, activeIssuesList]);
+    return { 
+      score: calculatedScore, 
+      reasons, 
+      totalActive: unresolvedCount, 
+      criticalActive: criticalUnresolved, 
+      avgSeverity, 
+      totalLiability90 
+    };
+  }, [activeIssuesList]);
 
   const healthDetails = useMemo(() => {
     const s = healthStats.score;
@@ -315,6 +335,159 @@ export default function ExecutiveCommandCenter({
         totalCount: deptIssues.length
       };
     });
+  }, [activeIssuesList]);
+
+  // ----------------------------------------------------
+  // LIVE METRICS & COMMUNITY ENGAGEMENT CALCULATIONS
+  // ----------------------------------------------------
+  const liveMetrics = useMemo(() => {
+    const totalReports = activeIssuesList.length;
+    
+    let submitted = 0;
+    let verified = 0;
+    let approved = 0;
+    let manualReview = 0;
+    let rejected = 0;
+    let assigned = 0;
+    let inProgress = 0;
+    let resolved = 0;
+    let closed = 0;
+
+    activeIssuesList.forEach(i => {
+      const s = String(i.status || "").toLowerCase().replace(/_/g, " ").trim();
+      if (s === "submitted" || s === "reported") submitted++;
+      else if (s === "verified") verified++;
+      else if (s === "approved") approved++;
+      else if (s === "manual review") manualReview++;
+      else if (s === "rejected") rejected++;
+      else if (s === "assigned") assigned++;
+      else if (s === "crew dispatched" || s === "dispatched" || s === "en route" || s === "work in progress" || s === "wip" || s === "repairing" || s === "quality inspection" || s === "inspection") inProgress++;
+      else if (s === "resolved") resolved++;
+      else if (s === "closed") closed++;
+    });
+
+    const criticalIssues = activeIssuesList.filter(i => (i.severity || 0) >= 8).length;
+    const highSeverity = activeIssuesList.filter(i => (i.severity || 0) >= 8).length;
+    const mediumSeverity = activeIssuesList.filter(i => (i.severity || 0) >= 5 && (i.severity || 0) < 8).length;
+    const lowSeverity = activeIssuesList.filter(i => (i.severity || 0) < 5).length;
+
+    const avgConfidence = activeIssuesList.length > 0
+      ? Math.round((activeIssuesList.reduce((sum, i) => sum + (i.confidence || 0.95), 0) / activeIssuesList.length) * 100)
+      : 95;
+
+    const slaIssues = activeIssuesList.map(i => getSLAStatus(i.createdAt, i.dispatch?.responseSLA, i.completionTime));
+    const onTrackCount = slaIssues.filter(sla => sla.onTrack).length;
+    const slaCompliance = activeIssuesList.length > 0 ? Math.round((onTrackCount / activeIssuesList.length) * 100) : 100;
+
+    const pendingMunicipalReview = activeIssuesList.filter(i => {
+      const s = String(i.status || "").toLowerCase().trim();
+      return s === "submitted" || s === "reported" || s === "manual review";
+    }).length;
+
+    return {
+      totalReports,
+      submitted,
+      verified,
+      approved,
+      manualReview,
+      rejected,
+      assigned,
+      inProgress,
+      resolved,
+      closed,
+      criticalIssues,
+      highSeverity,
+      mediumSeverity,
+      lowSeverity,
+      avgConfidence,
+      slaCompliance,
+      pendingMunicipalReview
+    };
+  }, [activeIssuesList]);
+
+  const communityIntelligence = useMemo(() => {
+    const communityVerified = activeIssuesList.filter(i => {
+      const s = String(i.status || "").toLowerCase();
+      return s === "verified" || (i.verifications && i.verifications > 1);
+    }).length;
+
+    const awaitingValidation = activeIssuesList.filter(i => {
+      const s = String(i.status || "").toLowerCase();
+      return (s === "submitted" || s === "reported") && (!i.verifications || i.verifications <= 1);
+    }).length;
+
+    const totalVerifications = activeIssuesList.reduce((sum, i) => sum + (i.verifications || 0), 0);
+    const totalDisputes = activeIssuesList.reduce((sum, i) => sum + (i.disputes || 0), 0);
+    const totalVotes = totalVerifications + totalDisputes;
+
+    const trustScores = activeIssuesList.map(issue => {
+      const v = issue.verifications !== undefined ? issue.verifications : 1;
+      const d = issue.disputes !== undefined ? issue.disputes : 0;
+      if (v === 0 && d === 0) return 100;
+      return (v / (v + d)) * 100;
+    });
+    const avgCommunityTrustScore = trustScores.length > 0 ? Math.round(trustScores.reduce((sum, s) => sum + s, 0) / trustScores.length) : 100;
+
+    const citizenParticipationRate = activeIssuesList.length > 0 ? Math.min(100, Math.round((totalVotes / (activeIssuesList.length * 5)) * 100)) : 0;
+
+    // Most Reported Category
+    const categoryCounts: Record<string, number> = {};
+    activeIssuesList.forEach(i => {
+      const cat = i.issueType || "Other";
+      categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+    });
+    let mostReportedCategory = "N/A";
+    let maxCount = 0;
+    Object.entries(categoryCounts).forEach(([cat, count]) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostReportedCategory = cat.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      }
+    });
+
+    // Most Active Category (Highest engagement)
+    const categoryEngagement: Record<string, number> = {};
+    activeIssuesList.forEach(i => {
+      const cat = i.issueType || "Other";
+      const engagement = (i.verifications || 0) + (i.disputes || 0);
+      categoryEngagement[cat] = (categoryEngagement[cat] || 0) + engagement;
+    });
+    let mostActiveCategory = "N/A";
+    let maxEngagement = 0;
+    Object.entries(categoryEngagement).forEach(([cat, eng]) => {
+      if (eng > maxEngagement) {
+        maxEngagement = eng;
+        mostActiveCategory = cat.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      }
+    });
+
+    // Highest Engagement Ward
+    const wardEngagement: Record<string, number> = {};
+    activeIssuesList.forEach(i => {
+      const ward = i.ward || i.city || "Unassigned";
+      const engagement = (i.verifications || 0) + (i.disputes || 0);
+      wardEngagement[ward] = (wardEngagement[ward] || 0) + engagement;
+    });
+    let highestEngagementWard = "N/A";
+    let maxWardEngagement = 0;
+    Object.entries(wardEngagement).forEach(([ward, eng]) => {
+      if (eng > maxWardEngagement) {
+        maxWardEngagement = eng;
+        highestEngagementWard = ward;
+      }
+    });
+
+    return {
+      communityVerified,
+      awaitingValidation,
+      totalVerifications,
+      totalDisputes,
+      avgCommunityTrustScore,
+      citizenParticipationRate,
+      mostReportedCategory,
+      mostActiveCategory,
+      highestEngagementWard
+    };
   }, [activeIssuesList]);
 
   // Municipal Live Activity Feed (Section 9)
@@ -568,6 +741,25 @@ export default function ExecutiveCommandCenter({
         </div>
       </div>
 
+      {/* LIVE REGISTRY METRICS SUMMARY KPIs ROW */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4" id="live-registry-summary-kpis">
+        {[
+          { label: "Total Reports", val: liveMetrics.totalReports, color: "text-slate-900 bg-white border-slate-200" },
+          { label: "Submitted", val: liveMetrics.submitted, color: "text-sky-600 bg-sky-50/50 border-sky-100" },
+          { label: "Community Verified", val: liveMetrics.verified, color: "text-emerald-600 bg-emerald-50/50 border-emerald-100" },
+          { label: "Pending Review", val: liveMetrics.pendingMunicipalReview, color: "text-amber-600 bg-amber-50/50 border-amber-100" },
+          { label: "Approved", val: liveMetrics.approved, color: "text-indigo-600 bg-indigo-50/50 border-indigo-100" },
+          { label: "In Progress", val: liveMetrics.inProgress, color: "text-purple-600 bg-purple-50/50 border-purple-100" },
+          { label: "SLA Compliance", val: `${liveMetrics.slaCompliance}%`, color: "text-teal-600 bg-teal-50/50 border-teal-100" },
+          { label: "AI Confidence", val: `${liveMetrics.avgConfidence}%`, color: "text-violet-600 bg-violet-50/50 border-violet-100" }
+        ].map((card, i) => (
+          <div key={i} className={`border p-4 rounded-2xl flex flex-col justify-between gap-2 shadow-sm ${card.color}`}>
+            <span className="text-[10px] font-black uppercase tracking-wider block opacity-80">{card.label}</span>
+            <span className="text-xl font-black leading-none">{card.val}</span>
+          </div>
+        ))}
+      </div>
+
       {/* Grid Layout: Row 1 - Health score (Section 1) & Critical alerts (Section 2) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
@@ -618,6 +810,24 @@ export default function ExecutiveCommandCenter({
                 <p className="text-xs text-slate-400 font-medium mt-1">Based on active incident pressure & liabilities.</p>
               </div>
             </div>
+
+            {/* Severity Counts breakdown card */}
+            <div className="bg-slate-50 border border-slate-100 p-3 rounded-2xl flex justify-around text-center gap-2 mb-4">
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 block uppercase leading-none mb-1">Low Sev</span>
+                <span className="text-sm font-extrabold text-emerald-600">{liveMetrics.lowSeverity}</span>
+              </div>
+              <div className="border-r border-slate-200 h-8 self-center" />
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 block uppercase leading-none mb-1">Medium Sev</span>
+                <span className="text-sm font-extrabold text-amber-500">{liveMetrics.mediumSeverity}</span>
+              </div>
+              <div className="border-r border-slate-200 h-8 self-center" />
+              <div>
+                <span className="text-[9px] font-bold text-slate-400 block uppercase leading-none mb-1">High/Crit</span>
+                <span className="text-sm font-extrabold text-rose-600">{liveMetrics.highSeverity}</span>
+              </div>
+            </div>
           </div>
 
           <div className="border-t border-slate-100 pt-4 space-y-3">
@@ -632,14 +842,14 @@ export default function ExecutiveCommandCenter({
                 healthStats.reasons.map((item, idx) => (
                   <li key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-2.5 rounded-xl">
                     <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-rose-500 shrink-0" />
+                      <span className={`h-2 w-2 rounded-full ${item.penalty < 0 ? 'bg-emerald-500' : 'bg-rose-500'} shrink-0`} />
                       <div>
                         <p className="text-slate-800 font-bold text-[11px] leading-tight">{item.label}</p>
                         <p className="text-slate-400 text-[9px] font-medium leading-none">{item.value}</p>
                       </div>
                     </div>
-                    <span className="text-rose-600 font-bold text-[11px] shrink-0">
-                      -{item.penalty.toFixed(1)} pts
+                    <span className={`${item.penalty < 0 ? 'text-emerald-600' : 'text-rose-600'} font-bold text-[11px] shrink-0`}>
+                      {item.penalty < 0 ? `+${Math.abs(item.penalty).toFixed(1)} pts` : `-${item.penalty.toFixed(1)} pts`}
                     </span>
                   </li>
                 ))
@@ -720,12 +930,15 @@ export default function ExecutiveCommandCenter({
             {/* SPRINT 9: Execution Dashboard Bento Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
               {[
-                { label: "Total Active", val: executionStats.totalActive, color: "text-indigo-600 bg-indigo-50 border-indigo-100" },
-                { label: "Assigned", val: executionStats.assigned, color: "text-blue-600 bg-blue-50 border-blue-100" },
-                { label: "En Route", val: executionStats.enRoute, color: "text-amber-600 bg-amber-50 border-amber-100" },
-                { label: "Repairing", val: executionStats.repairing, color: "text-purple-600 bg-purple-50 border-purple-100" },
-                { label: "Inspection", val: executionStats.inspection, color: "text-rose-600 bg-rose-50 border-rose-100" },
-                { label: "Closed Today", val: executionStats.closedToday, color: "text-emerald-600 bg-emerald-50 border-emerald-100" }
+                { label: "Total Active", val: liveMetrics.totalReports, color: "text-indigo-600 bg-indigo-50 border-indigo-100" },
+                { label: "Submitted", val: liveMetrics.submitted, color: "text-sky-600 bg-sky-50 border-sky-100" },
+                { label: "Assigned", val: liveMetrics.assigned, color: "text-blue-600 bg-blue-50 border-blue-100" },
+                { label: "In Progress", val: liveMetrics.inProgress, color: "text-purple-600 bg-purple-50 border-purple-100" },
+                { label: "Manual Review", val: liveMetrics.manualReview, color: "text-amber-600 bg-amber-50 border-amber-100" },
+                { label: "Rejected", val: liveMetrics.rejected, color: "text-rose-600 bg-rose-50 border-rose-100" },
+                { label: "Resolved", val: liveMetrics.resolved, color: "text-teal-600 bg-teal-50 border-teal-100" },
+                { label: "Closed", val: liveMetrics.closed, color: "text-emerald-600 bg-emerald-50 border-emerald-100" },
+                { label: "Critical Issues", val: liveMetrics.criticalIssues, color: "text-red-600 bg-red-50 border-red-100" }
               ].map((card, i) => (
                 <div key={i} className={`border p-3 rounded-xl flex flex-col justify-between gap-1.5 ${card.color} shadow-sm`}>
                   <span className="text-[9px] font-bold uppercase text-slate-500 tracking-wider block">{card.label}</span>
@@ -1051,6 +1264,89 @@ export default function ExecutiveCommandCenter({
             </div>
           </div>
 
+        </div>
+      </div>
+
+      {/* COMMUNITY INTELLIGENCE SECTION */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md animate-fade-in" id="community-intelligence-section">
+        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-1.5 mb-2">
+          <Users className="h-4 w-4 text-indigo-500" />
+          COMMUNITY INTELLIGENCE
+        </span>
+        <h3 className="text-lg font-black text-slate-900 tracking-tight mb-4">Live Community Engagement & Validation</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Card 1: Community Validation Summary */}
+          <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col justify-between shadow-sm">
+            <div>
+              <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                Validation Status
+              </h4>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Community Verified Reports</span>
+                  <span className="text-sm font-extrabold text-slate-900">{communityIntelligence.communityVerified}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Reports Awaiting Validation</span>
+                  <span className="text-sm font-extrabold text-slate-900">{communityIntelligence.awaitingValidation}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-600 font-semibold">Citizen Participation Rate</span>
+                  <span className="text-sm font-extrabold text-indigo-600">{communityIntelligence.citizenParticipationRate}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Verification Activity */}
+          <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col justify-between shadow-sm">
+            <div>
+              <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                <Activity className="h-4 w-4 text-blue-600" />
+                Community Votes Ledger
+              </h4>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Total Community Verifications</span>
+                  <span className="text-sm font-extrabold text-emerald-600">+{communityIntelligence.totalVerifications}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Total Community Disputes</span>
+                  <span className="text-sm font-extrabold text-rose-600">-{communityIntelligence.totalDisputes}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-600 font-semibold">Average Community Trust Score</span>
+                  <span className="text-sm font-extrabold text-slate-900">{communityIntelligence.avgCommunityTrustScore}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Hotspot Categories & Wards */}
+          <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl flex flex-col justify-between shadow-sm">
+            <div>
+              <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                <Award className="h-4 w-4 text-purple-600" />
+                Demographic Highlights
+              </h4>
+              <div className="space-y-4">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Most Reported Category</span>
+                  <span className="text-xs font-extrabold text-slate-950 truncate max-w-[150px]">{communityIntelligence.mostReportedCategory}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200/30">
+                  <span className="text-xs text-slate-600 font-semibold">Most Active Category</span>
+                  <span className="text-xs font-extrabold text-indigo-700 truncate max-w-[150px]">{communityIntelligence.mostActiveCategory}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-600 font-semibold">Highest Engagement Ward</span>
+                  <span className="text-xs font-extrabold text-purple-700 truncate max-w-[150px] uppercase">{communityIntelligence.highestEngagementWard}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
