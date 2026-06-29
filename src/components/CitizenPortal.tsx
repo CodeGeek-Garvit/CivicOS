@@ -83,6 +83,7 @@ export default function CitizenPortal({
   onBackToSelector
 }: CitizenPortalProps) {
   const [citizenTab, setCitizenTab] = useState<"home" | "nearby" | "my-reports" | "rewards">("home");
+  const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -921,23 +922,52 @@ export default function CitizenPortal({
                     {issues.filter(i => myReportedIds.includes(i.id)).map((item) => {
                       const timelineSteps = getTimelineSteps(item.status);
 
+                      // Compute expanded 7-stage timeline
+                      const s = String(item.status || "").toLowerCase();
+                      const isSubmitted = true;
+                      const isAiAnalyzed = true;
+                      const isCommunityVerified = s.includes("verified") || s.includes("approved") || s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed") || (item.verifications && item.verifications > 1);
+                      const isApproved = s.includes("approved") || s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");
+                      const isAssigned = s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");
+                      const isDispatched = s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");
+                      const isResolved = s.includes("resolved") || s.includes("closed");
+
+                      const expandedTimeline = [
+                        { label: "Submitted", done: isSubmitted },
+                        { label: "AI Analyzed", done: isAiAnalyzed },
+                        { label: "Community Verified (if applicable)", done: isCommunityVerified },
+                        { label: "Municipal Approved (if applicable)", done: isApproved },
+                        { label: "Department Assigned", done: isAssigned },
+                        { label: "Crew Dispatched", done: isDispatched },
+                        { label: "Resolved", done: isResolved }
+                      ];
+
                       return (
-                        <div key={item.id} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
+                        <div 
+                          key={item.id} 
+                          onClick={() => setExpandedReportId(expandedReportId === item.id ? null : item.id)}
+                          className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4 cursor-pointer hover:border-slate-300 hover:shadow-md transition-all select-none"
+                        >
                           
-                          <div className="flex gap-4 items-start border-b border-slate-100 pb-3">
-                            {item.imageUrl && (
-                              <img 
-                                src={item.imageUrl} 
-                                alt={item.title} 
-                                className="h-16 w-16 rounded-xl object-cover border border-slate-100"
-                              />
-                            )}
-                            <div className="space-y-0.5">
-                              <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getStatusColor(item.status)}`}>
-                                {item.status || "Reported"}
-                              </span>
-                              <h4 className="text-xs font-black text-slate-950 mt-1">{item.title}</h4>
-                              <p className="text-[10px] text-slate-400 font-mono">Incident ID: {item.id} • {new Date(item.createdAt).toLocaleDateString()}</p>
+                          <div className="flex gap-4 items-start border-b border-slate-100 pb-3 justify-between">
+                            <div className="flex gap-4 items-start">
+                              {item.imageUrl && (
+                                <img 
+                                  src={item.imageUrl} 
+                                  alt={item.title} 
+                                  className="h-16 w-16 rounded-xl object-cover border border-slate-100 shrink-0"
+                                />
+                              )}
+                              <div className="space-y-0.5">
+                                <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getStatusColor(item.status)}`}>
+                                  {item.status || "Reported"}
+                                </span>
+                                <h4 className="text-xs font-black text-slate-950 mt-1">{item.title}</h4>
+                                <p className="text-[10px] text-slate-400 font-mono">Incident ID: {item.id} • {new Date(item.createdAt).toLocaleDateString()}</p>
+                              </div>
+                            </div>
+                            <div className="pt-1 shrink-0">
+                              <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${expandedReportId === item.id ? "rotate-90 text-indigo-500" : ""}`} />
                             </div>
                           </div>
 
@@ -969,6 +999,169 @@ export default function CitizenPortal({
                               ))}
                             </div>
                           </div>
+
+                          {/* Smooth expanded details section */}
+                          <AnimatePresence initial={false}>
+                            {expandedReportId === item.id && (
+                              <motion.div
+                                key="expanded-details"
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.3, ease: "easeInOut" }}
+                                className="overflow-hidden border-t border-slate-100 pt-4 space-y-5"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {/* Expanded Timeline (7-Stage) */}
+                                <div className="space-y-3 pt-1">
+                                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Expanded Incident Timeline</span>
+                                  <div className="flex flex-wrap md:flex-nowrap items-center justify-between gap-y-4 gap-x-1.5 bg-slate-50 border border-slate-100 p-4 rounded-2xl relative">
+                                    {expandedTimeline.map((step, idx) => (
+                                      <React.Fragment key={idx}>
+                                        <div className="flex flex-col items-center flex-1 min-w-[70px] text-center space-y-1.5">
+                                          <div className={`h-7 w-7 rounded-full flex items-center justify-center transition-all ${
+                                            step.done 
+                                              ? "bg-emerald-500 text-white shadow-sm" 
+                                              : "bg-slate-100 text-slate-300 border border-slate-200"
+                                          }`}>
+                                            {step.done ? (
+                                              <CheckCircle className="h-4 w-4 fill-current text-white stroke-[2.5]" />
+                                            ) : (
+                                              <div className="h-2 w-2 rounded-full bg-slate-300" />
+                                            )}
+                                          </div>
+                                          <span className={`text-[9px] font-black leading-tight ${step.done ? "text-slate-800" : "text-slate-400"}`}>
+                                            {step.label}
+                                          </span>
+                                        </div>
+                                        {idx < expandedTimeline.length - 1 && (
+                                          <div className="hidden md:block text-slate-300 font-extrabold text-xs shrink-0">
+                                            <ArrowRight className="h-3 w-3" />
+                                          </div>
+                                        )}
+                                      </React.Fragment>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Detail blocks */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-slate-800">
+                                  
+                                  {/* AI diagnostics and visual evidence */}
+                                  <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">AI Issue Description</span>
+                                      <p className="text-xs text-slate-700 leading-relaxed font-semibold bg-slate-50 border border-slate-100 rounded-2xl p-3.5 shadow-inner">
+                                        {item.description || "No full AI issue description available."}
+                                      </p>
+                                    </div>
+
+                                    {/* Images display */}
+                                    <div className="space-y-2">
+                                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">Evidence Verification</span>
+                                      {item.afterImageUrl ? (
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div className="space-y-1">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase block">Before Repair</span>
+                                            <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm">
+                                              <img src={item.imageUrl} alt="Before Repair" className="w-full h-full object-cover" />
+                                            </div>
+                                          </div>
+                                          <div className="space-y-1">
+                                            <span className="text-[9px] font-black text-emerald-600 uppercase block">After Repair</span>
+                                            <div className="rounded-2xl overflow-hidden border border-emerald-100 aspect-video bg-slate-50 shadow-sm">
+                                              <img src={item.afterImageUrl} alt="After Repair" className="w-full h-full object-cover" />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        item.imageUrl && (
+                                          <div className="space-y-1">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase block">Original Citizen Evidence</span>
+                                            <div className="max-w-md rounded-2xl overflow-hidden border border-slate-200 aspect-video bg-slate-50 shadow-sm">
+                                              <img src={item.imageUrl} alt="Original Citizen Evidence" className="w-full h-full object-cover" />
+                                            </div>
+                                          </div>
+                                        )
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Registry Records & Community trust info */}
+                                  <div className="space-y-4">
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3 shadow-sm">
+                                      <h5 className="text-xs font-black text-slate-900 border-b border-slate-200/50 pb-2 flex items-center gap-2">
+                                        <Activity className="h-3.5 w-3.5 text-blue-500 animate-pulse" />
+                                        Technical Registry Records
+                                      </h5>
+                                      
+                                      <div className="grid grid-cols-2 gap-x-4 gap-y-3.5 text-[11px]">
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Issue ID</span>
+                                          <span className="font-mono text-slate-800 font-black truncate block">{item.id}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Date Submitted</span>
+                                          <span className="text-slate-800 font-semibold block">{new Date(item.createdAt).toLocaleString()}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Category</span>
+                                          <span className="text-slate-800 font-semibold block">{getCategoryBadgeLabel(item.issueType)}</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Current Status</span>
+                                          <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wide mt-0.5 ${getStatusColor(item.status)}`}>
+                                            {item.status || "Reported"}
+                                          </span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Hazard Severity</span>
+                                          <span className="text-rose-700 font-black text-xs block">Sev: {item.severity}/10</span>
+                                        </div>
+                                        <div>
+                                          <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Confidence Score</span>
+                                          <span className="text-indigo-700 font-black text-xs block">{Math.round((item.confidence || 0.95) * 100)}%</span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Community Audit info */}
+                                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3 shadow-sm">
+                                      <h5 className="text-xs font-black text-slate-900 border-b border-slate-200/50 pb-2 flex items-center gap-2">
+                                        <Award className="h-3.5 w-3.5 text-emerald-500" />
+                                        Community Trust Audit
+                                      </h5>
+                                      
+                                      {(() => {
+                                        const trust = getCommunityTrustScore(item);
+                                        return (
+                                          <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                              <div>
+                                                <span className="text-xs font-black text-slate-800 block">{trust.score}% Trust</span>
+                                                <span className="text-[9px] text-slate-400 font-extrabold block">{trust.label}</span>
+                                              </div>
+                                              <div className="flex gap-2">
+                                                <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1 rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                                                  <ThumbsUp className="h-3 w-3" />
+                                                  +{item.verifications || 0}
+                                                </span>
+                                                <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-100 px-2 py-1 rounded-lg font-bold flex items-center gap-1 shadow-sm">
+                                                  <ThumbsDown className="h-3 w-3" />
+                                                  -{item.disputes || 0}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })()}
+                                    </div>
+
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
 
                         </div>
                       );
