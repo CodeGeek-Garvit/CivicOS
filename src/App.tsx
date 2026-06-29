@@ -4,13 +4,14 @@ import {
   AlertCircle, ArrowRight, ShieldAlert, Sparkles, 
   Activity, FileText, Database, Layers, Check, RefreshCw, Cpu,
   MapPin, HelpCircle, TriangleAlert, Thermometer, Gauge, Map as MapIcon, AppWindow,
-  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain, ClipboardCheck
+  Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain, ClipboardCheck, User
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import MapDashboard from "./components/MapDashboard";
 import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
 import IncidentExecutionCenter from "./components/IncidentExecutionCenter";
 import CommissionerCopilot from "./components/CommissionerCopilot";
+import CitizenPortal from "./components/CitizenPortal";
 import { GeminiAnalysis, SavedIssue } from "./types";
 
 const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -48,6 +49,10 @@ const compressImage = (base64Str: string, maxWidth: number = 800, quality: numbe
 };
 
 export default function App() {
+  const [userRole, setUserRole] = useState<"citizen" | "municipal" | null>(() => {
+    const saved = localStorage.getItem("civicos_user_role");
+    return (saved === "citizen" || saved === "municipal") ? saved : null;
+  });
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -489,6 +494,110 @@ export default function App() {
     return { text: "text-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30", label: "Minor Issue" };
   };
 
+  if (userRole === null) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col justify-center items-center p-6 relative overflow-hidden" id="portal-selector-root">
+        {/* Glowing background highlights */}
+        <div className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full bg-indigo-600/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 translate-x-1/2 translate-y-1/2 w-96 h-96 rounded-full bg-emerald-600/10 blur-[120px] pointer-events-none" />
+
+        <div className="max-w-4xl w-full text-center space-y-10 z-10 animate-fade-in">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-1.5 bg-indigo-500/10 border border-indigo-400/20 px-3.5 py-1 rounded-full text-xs text-indigo-300 font-extrabold tracking-wider uppercase">
+              <Sparkles className="h-3 w-3" /> Autonomous Municipal Operating System
+            </div>
+            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">
+              Welcome to <span className="bg-gradient-to-r from-blue-400 via-sky-400 to-emerald-400 bg-clip-text text-transparent">CivicOS</span>
+            </h1>
+            <p className="text-xs md:text-sm text-slate-400 max-w-lg mx-auto font-medium">
+              Bridging the gap between active citizen collaboration and automated municipal task execution. Select your workspace to begin.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+            {/* OPTION 1: CITIZEN */}
+            <button
+              onClick={() => {
+                setUserRole("citizen");
+                localStorage.setItem("civicos_user_role", "citizen");
+              }}
+              className="group relative border border-slate-800 hover:border-emerald-500/50 bg-slate-900/40 hover:bg-slate-900/80 p-8 rounded-3xl transition-all duration-300 text-left shadow-xl hover:shadow-emerald-950/10 hover:-translate-y-1 flex flex-col justify-between h-80 cursor-pointer"
+            >
+              <div className="absolute top-4 right-4 text-xs font-black text-emerald-400 bg-emerald-950/60 border border-emerald-900/50 px-2.5 py-1 rounded-full uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                Optimistic Portal
+              </div>
+              <div className="space-y-4">
+                <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <User className="h-6 w-6 stroke-[2]" />
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-bold text-white group-hover:text-emerald-400 transition-colors">Citizen Experience</h3>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                    Report public safety hazards using our AI Vision intake hub, participate in community audits, verify local issues, and earn civic points.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-extrabold text-emerald-400">
+                <span>Enter Citizen Portal</span>
+                <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+
+            {/* OPTION 2: MUNICIPAL */}
+            <button
+              onClick={() => {
+                setUserRole("municipal");
+                localStorage.setItem("civicos_user_role", "municipal");
+              }}
+              className="group relative border border-slate-800 hover:border-indigo-500/50 bg-slate-900/40 hover:bg-slate-900/80 p-8 rounded-3xl transition-all duration-300 text-left shadow-xl hover:shadow-indigo-950/10 hover:-translate-y-1 flex flex-col justify-between h-80 cursor-pointer"
+            >
+              <div className="absolute top-4 right-4 text-xs font-black text-indigo-400 bg-indigo-950/60 border border-indigo-900/50 px-2.5 py-1 rounded-full uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                Operational Command
+              </div>
+              <div className="space-y-4">
+                <div className="h-12 w-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <Activity className="h-6 w-6 stroke-[2]" />
+                </div>
+                <div className="space-y-1.5">
+                  <h3 className="text-xl font-bold text-white group-hover:text-indigo-400 transition-colors">Municipal Officer</h3>
+                  <p className="text-xs text-slate-400 font-medium leading-relaxed">
+                    Access the Executive Command Center, manage Geographic Intelligence GIS maps, initiate automated dispatching pipelines, and consult Commissioner Copilot.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 text-xs font-extrabold text-indigo-400">
+                <span>Enter Admin Console</span>
+                <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </button>
+          </div>
+
+          <div className="pt-8 border-t border-slate-900 max-w-xs mx-auto">
+            <span className="text-[10px] font-mono text-slate-500">CivicOS core platform v2.0.0 • Hackathon Submission Preview</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (userRole === "citizen") {
+    return (
+      <CitizenPortal 
+        issues={savedIssuesList}
+        isLiveMode={isLiveMode}
+        userLocation={userLocation}
+        gpsStatus={gpsStatus}
+        onRefresh={fetchIssues}
+        isLoading={loadingList}
+        onUpdateIssueStatus={handleUpdateIssueStatus}
+        onBackToSelector={() => {
+          setUserRole(null);
+          localStorage.removeItem("civicos_user_role");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" id="civicos-root">
       {/* Sleek Navigation Bar */}
@@ -576,12 +685,24 @@ export default function App() {
             </button>
           </div>
           
-          <div className="flex items-center space-x-2" id="system-status-container">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span className="text-xs font-mono font-medium text-slate-500">SYSTEM STABLE</span>
+          <div className="flex items-center space-x-4" id="system-status-container">
+            <button
+              onClick={() => {
+                setUserRole(null);
+                localStorage.removeItem("civicos_user_role");
+              }}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 text-xs font-extrabold rounded-xl border border-slate-200 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+            >
+              <User className="h-3.5 w-3.5" />
+              <span>Exit Console</span>
+            </button>
+            <div className="flex items-center space-x-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-mono font-medium text-slate-500">SYSTEM STABLE</span>
+            </div>
           </div>
         </div>
       </header>
