@@ -202,7 +202,7 @@ export default function App() {
             clientApp = initializeApp(data.config, "civicos-client");
           }
 
-          const clientDb = getFirestore(clientApp, data.config.databaseId);
+          const clientDb = getFirestore(clientApp);
           const q = query(collection(clientDb, "issues"), orderBy("createdAt", "desc"));
 
           const activeUnsubscribe = onSnapshot(q, (snapshot) => {

@@ -4,7 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import { initializeApp as initializeClientApp, getApps as getClientApps, getApp as getClientApp } from "firebase/app";
-import { initializeFirestore, collection, getDocs, query, orderBy, doc, setDoc, getDoc, limit } from "firebase/firestore";
+import { getFirestore, collection, getDocs, query, orderBy, doc, setDoc, getDoc, limit } from "firebase/firestore";
 import dotenv from "dotenv";
 import { registerIssuesRoutes } from "./server/routes/issues";
 
@@ -19,8 +19,7 @@ app.use(express.urlencoded({ limit: "15mb", extended: true }));
 
 // Dynamic Firebase Configuration Reading
 let firebaseConfig = {
-  projectId: "gen-lang-client-0288361705",
-  firestoreDatabaseId: "ai-studio-18271b79-8938-4a9f-88f2-c16bb9968d9b"
+  projectId: "civicos-78ba2"
 };
 
 // Simple in-memory storage for fallback demo mode
@@ -40,7 +39,6 @@ try {
     const authDomain = parsed.authDomain || `${parsed.projectId}.firebaseapp.com`;
     const projectId = parsed.projectId;
     const appId = parsed.appId;
-    const databaseId = parsed.firestoreDatabaseId || "(default)";
 
     let clientApp;
     if (getClientApps().length === 0) {
@@ -54,9 +52,9 @@ try {
       clientApp = getClientApp();
     }
 
-    db = initializeFirestore(clientApp, {}, databaseId);
+    db = getFirestore(clientApp);
     isFirestoreAvailable = true;
-    console.log(`Firebase Client SDK initialized successfully on project "${projectId}" database "${databaseId}"`);
+    console.log(`Firebase Client SDK initialized successfully on project "${projectId}"`);
     
     // Automatic seeding if enabled
     seedDemoDatasetIfEnabled();
@@ -310,8 +308,7 @@ app.get("/api/firebase-config", (req, res) => {
           apiKey: parsed.apiKey || process.env.VITE_FIREBASE_API_KEY,
           authDomain: parsed.authDomain || `${parsed.projectId}.firebaseapp.com`,
           projectId: parsed.projectId,
-          appId: parsed.appId,
-          databaseId: parsed.firestoreDatabaseId || "(default)"
+          appId: parsed.appId
         }
       });
     }

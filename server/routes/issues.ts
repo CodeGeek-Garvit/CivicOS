@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Type } from "@google/genai";
 import { doc, setDoc, getDoc, collection, query, orderBy, getDocs, runTransaction } from "firebase/firestore";
 import { systemInstruction, promptText, visionPromptSchema } from "../prompts/visionPrompt";
 import { computeTechnicalSeverity, computeDeterministicConfidence } from "../engines/scoringEngine";
@@ -810,5 +811,391 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       gmailMessageId: emailResult.gmailMessageId,
       sentTimestamp: emailResult.sentTimestamp
     });
+  });
+
+  // POST /api/copilot/chat (Chief of Staff Intelligence Advisor Endpoint)
+  app.post("/api/copilot/chat", async (req: Request, res: Response) => {
+    try {
+      const { query: userQuery, history: chatHistory } = req.body;
+      if (!userQuery) {
+        return res.status(400).json({ success: false, error: "Missing query in request body" });
+      }
+
+      console.log(`\n🤖 ==================================================`);
+      console.log(`🤖 [COPILOT API] Received user query: "${userQuery}"`);
+      console.log(`🤖 ==================================================\n`);
+
+      // 1. Fetch live issues (from Firestore if available, otherwise in-memory)
+      let issuesList: any[] = [];
+      if (isFirestoreAvailable && db) {
+        try {
+          const q = query(collection(db, "issues"), orderBy("createdAt", "desc"));
+          const querySnapshot = await getDocs(q);
+          issuesList = querySnapshot.docs.map((doc: any) => {
+            const data = doc.data();
+            let costOfInaction = data.costOfInaction;
+            if (!costOfInaction || !costOfInaction.baseCost) {
+              costOfInaction = computeCostOfInaction({
+                issueType: data.issueType || (data.perceptionData?.issueType) || "other",
+                affectedAsset: data.affectedAsset || (data.perceptionData?.affectedAsset) || "other",
+                estimatedRepairType: data.estimatedRepairType || (data.perceptionData?.estimatedRepairType) || "inspect",
+                technicalSeverity: data.severity || 5,
+                perceptionData: data.perceptionData || {
+                  damageExtent: data.damageExtent || "moderate",
+                  estimatedAffectedArea: data.estimatedAffectedArea || "medium"
+                },
+                title: data.title || "",
+                description: data.description || ""
+              });
+            }
+            let dispatch = data.dispatch;
+            if (!dispatch) {
+              let hash = 0;
+              const idStr = String(doc.id || "");
+              for (let i = 0; i < idStr.length; i++) {
+                hash += idStr.charCodeAt(i);
+              }
+              const sequenceNumber = (hash % 1000) + 1;
+              dispatch = runAutonomousDispatchPipeline({ id: doc.id, ...data, costOfInaction }, sequenceNumber);
+            }
+            return { id: doc.id, ...data, costOfInaction, dispatch };
+          });
+        } catch (dbError) {
+          console.error("Firestore read failed in Copilot API, falling back to in-memory:", dbError);
+        }
+      }
+
+      if (issuesList.length === 0) {
+        issuesList = [...inMemoryIssues].map(data => {
+          let costOfInaction = data.costOfInaction;
+          if (!costOfInaction || !costOfInaction.baseCost) {
+            costOfInaction = computeCostOfInaction({
+              issueType: data.issueType || (data.perceptionData?.issueType) || "other",
+              affectedAsset: data.affectedAsset || (data.perceptionData?.affectedAsset) || "other",
+              estimatedRepairType: data.estimatedRepairType || (data.perceptionData?.estimatedRepairType) || "inspect",
+              technicalSeverity: data.severity || 5,
+              perceptionData: data.perceptionData || {
+                damageExtent: data.damageExtent || "moderate",
+                estimatedAffectedArea: data.estimatedAffectedArea || "medium"
+              },
+              title: data.title || "",
+              description: data.description || ""
+            });
+          }
+          let dispatch = data.dispatch;
+          if (!dispatch) {
+            let hash = 0;
+            const idStr = String(data.id || "");
+            for (let i = 0; i < idStr.length; i++) {
+              hash += idStr.charCodeAt(i);
+            }
+            const sequenceNumber = (hash % 1000) + 1;
+            dispatch = runAutonomousDispatchPipeline({ ...data, costOfInaction }, sequenceNumber);
+          }
+          return { ...data, costOfInaction, dispatch };
+        });
+      }
+
+      // 2. Classify semantic intent programmatically to retrieve only the relevant subset of records
+      const kw = userQuery.toLowerCase().trim();
+      let selectedContext = "";
+      let topic = "general";
+
+      // Helper to format rupees
+      const formatRupees = (amount: number): string => {
+        return "₹" + Math.round(amount).toLocaleString("en-IN");
+      };
+
+      // Helper to compute SLA compliance
+      const getSLAComplianceOnServer = (createdAt: string, responseSLA: any, completionTime?: string) => {
+        const createdDate = new Date(createdAt);
+        const endDate = completionTime ? new Date(completionTime) : new Date();
+        const elapsedMs = Math.max(0, endDate.getTime() - createdDate.getTime());
+        const elapsedHours = elapsedMs / (1000 * 60 * 60);
+
+        let targetHours = 24;
+        const slaStr = String(responseSLA || "24 Hours").toLowerCase();
+        if (slaStr.includes("24 hours") || slaStr.includes("critical")) targetHours = 24;
+        else if (slaStr.includes("72 hours") || slaStr.includes("high")) targetHours = 72;
+        else if (slaStr.includes("7 days") || slaStr.includes("medium")) targetHours = 168;
+        else if (slaStr.includes("14 days") || slaStr.includes("low")) targetHours = 336;
+
+        return elapsedHours <= targetHours;
+      };
+
+      if (kw.includes("water") || kw.includes("leak") || kw.includes("drain")) {
+        topic = "department";
+        const waterIssues = issuesList.filter(i => 
+          (i.issueType && i.issueType.toLowerCase().includes("water")) ||
+          (i.dispatch?.department && i.dispatch.department.toLowerCase().includes("water")) ||
+          (i.title && i.title.toLowerCase().includes("water"))
+        );
+        selectedContext = `Water Supply & Drainage Department context:\n` +
+          `- Total water issues registered: ${waterIssues.length}\n` +
+          `- Active water issues: ${waterIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").length}\n` +
+          `Active Water issues details:\n` +
+          waterIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").slice(0, 5).map(i => 
+            `  * ID: ${i.id}, Title: "${i.title}", Severity: ${i.severity}/10, Ward: "${i.ward || "Pune"}", SLA: "${i.dispatch?.responseSLA || "24 Hours"}", Cost of Inaction: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}`
+          ).join("\n");
+      } 
+      else if (kw.includes("road") || kw.includes("pothole") || kw.includes("asphalt") || kw.includes("pavement")) {
+        topic = "department";
+        const roadIssues = issuesList.filter(i => 
+          (i.issueType && i.issueType.toLowerCase().includes("pothole")) ||
+          (i.issueType && i.issueType.toLowerCase().includes("road")) ||
+          (i.dispatch?.department && i.dispatch.department.toLowerCase().includes("road")) ||
+          (i.title && i.title.toLowerCase().includes("road"))
+        );
+        selectedContext = `Roads & Asphalt Department context:\n` +
+          `- Total road issues registered: ${roadIssues.length}\n` +
+          `- Active road issues: ${roadIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").length}\n` +
+          `Active Road issues details:\n` +
+          roadIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").slice(0, 5).map(i => 
+            `  * ID: ${i.id}, Title: "${i.title}", Severity: ${i.severity}/10, Ward: "${i.ward || "Pune"}", SLA: "${i.dispatch?.responseSLA || "24 Hours"}", Cost of Inaction: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}`
+          ).join("\n");
+      }
+      else if (kw.includes("waste") || kw.includes("garbage") || kw.includes("bin") || kw.includes("dump") || kw.includes("swm")) {
+        topic = "department";
+        const wasteIssues = issuesList.filter(i => 
+          (i.issueType && i.issueType.toLowerCase().includes("waste")) ||
+          (i.issueType && i.issueType.toLowerCase().includes("litter")) ||
+          (i.dispatch?.department && i.dispatch.department.toLowerCase().includes("waste")) ||
+          (i.title && i.title.toLowerCase().includes("garbage"))
+        );
+        selectedContext = `Solid Waste Management (SWM) Department context:\n` +
+          `- Total waste issues registered: ${wasteIssues.length}\n` +
+          `- Active waste issues: ${wasteIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").length}\n` +
+          `Active Waste issues details:\n` +
+          wasteIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").slice(0, 5).map(i => 
+            `  * ID: ${i.id}, Title: "${i.title}", Severity: ${i.severity}/10, Ward: "${i.ward || "Pune"}", SLA: "${i.dispatch?.responseSLA || "24 Hours"}", Cost of Inaction: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}`
+          ).join("\n");
+      }
+      else if (kw.includes("budget") || kw.includes("cost") || kw.includes("exposure") || kw.includes("financial") || kw.includes("approve") || kw.includes("money") || kw.includes("authorize")) {
+        topic = "budget";
+        const activeIssues = issuesList.filter(i => i.status !== "Resolved" && i.status !== "Closed");
+        const totalCostNow = activeIssues.reduce((sum, i) => sum + (i.costOfInaction?.repairCostNow || 4500), 0);
+        const totalCost30Days = activeIssues.reduce((sum, i) => sum + (i.costOfInaction?.repairCost30Days || 9400), 0);
+        const totalCost90Days = activeIssues.reduce((sum, i) => sum + (i.costOfInaction?.repairCost90Days || 24800), 0);
+        const costEscalationGap = totalCost90Days - totalCostNow;
+
+        selectedContext = `Financial & Budget Impact context:\n` +
+          `- Total Active Incidents needing approval: ${activeIssues.length}\n` +
+          `- Immediate Repair Cost Liability (Current): ${formatRupees(totalCostNow)}\n` +
+          `- Deferred Cost in 30 Days: ${formatRupees(totalCost30Days)} (Increase of ${formatRupees(totalCost30Days - totalCostNow)})\n` +
+          `- Deferred Cost in 90 Days: ${formatRupees(totalCost90Days)} (Escalation gap of ${formatRupees(costEscalationGap)})\n` +
+          `Top 5 Highest Immediate Financial Liabilities:\n` +
+          activeIssues.sort((a,b) => (b.costOfInaction?.repairCostNow || 0) - (a.costOfInaction?.repairCostNow || 0)).slice(0, 5).map(i =>
+            `  * ID: ${i.id}, Title: "${i.title}", Department: "${i.dispatch?.department || "Unassigned"}", Ward: "${i.ward || "Pune"}", Current Repair: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}, 90-Day Repair: ${formatRupees(i.costOfInaction?.repairCost90Days || 24800)}`
+          ).join("\n");
+      }
+      else if (kw.includes("ward") || kw.includes("hotspot") || kw.includes("cluster") || kw.includes("concentration") || kw.includes("density") || kw.includes("geographic") || kw.includes("risk")) {
+        topic = "ward";
+        const wardStats: Record<string, { count: number; active: number; totalCost: number; maxSeverity: number }> = {};
+        issuesList.forEach(i => {
+          const w = i.ward || "Unknown Ward";
+          if (!wardStats[w]) {
+            wardStats[w] = { count: 0, active: 0, totalCost: 0, maxSeverity: 0 };
+          }
+          wardStats[w].count += 1;
+          const isActive = i.status !== "Resolved" && i.status !== "Closed";
+          if (isActive) {
+            wardStats[w].active += 1;
+            wardStats[w].totalCost += (i.costOfInaction?.repairCostNow || 4500);
+          }
+          if ((i.severity || 0) > wardStats[w].maxSeverity) {
+            wardStats[w].maxSeverity = i.severity || 0;
+          }
+        });
+
+        const activeAndDispatched = issuesList.filter(i => i.dispatch);
+        const breachedIssues = activeAndDispatched.filter(i => {
+          return !getSLAComplianceOnServer(i.createdAt, i.dispatch?.responseSLA || "24 Hours", i.completionTime);
+        });
+
+        selectedContext = `Geographic & Spatial Ward Hotspots context:\n` +
+          `- Ward Distribution of Incidents:\n` +
+          Object.entries(wardStats).map(([name, stat]) => 
+            `  * Ward: "${name}", Active Incidents: ${stat.active}, Total Registered: ${stat.count}, Max Incident Severity: ${stat.maxSeverity}/10, Cumulative Repair Liability: ${formatRupees(stat.totalCost)}`
+          ).join("\n") + `\n- SLA Breaches: ${breachedIssues.length} active breaches across wards.`;
+      }
+      else if (kw.includes("sla") || kw.includes("breach") || kw.includes("overdue") || kw.includes("compliant") || kw.includes("compliance") || kw.includes("turnaround")) {
+        topic = "sla";
+        const activeAndDispatched = issuesList.filter(i => i.dispatch);
+        const activePending = activeAndDispatched.filter(i => i.status !== "Resolved" && i.status !== "Closed");
+        const breachedIssues = activeAndDispatched.filter(i => {
+          return !getSLAComplianceOnServer(i.createdAt, i.dispatch?.responseSLA || "24 Hours", i.completionTime);
+        });
+        const complianceRate = activeAndDispatched.length > 0
+          ? Math.round(((activeAndDispatched.length - breachedIssues.length) / activeAndDispatched.length) * 100)
+          : 100;
+
+        selectedContext = `SLA Operational Performance & Overdue Tasks:\n` +
+          `- SLA Compliance Rate: ${complianceRate}%\n` +
+          `- Total Dispatched/Monitored Issues: ${activeAndDispatched.length}\n` +
+          `- Active SLA Breaches (Action Required!): ${breachedIssues.length}\n` +
+          `- Active Pending Tasks: ${activePending.length}\n` +
+          `List of current Active SLA Breached Issues:\n` +
+          breachedIssues.filter(i => i.status !== "Resolved" && i.status !== "Closed").slice(0, 5).map(i =>
+            `  * ID: ${i.id}, Title: "${i.title}", Department: "${i.dispatch?.department || "Unassigned"}", Ward: "${i.ward || "Pune"}", SLA Allowed: "${i.dispatch?.responseSLA || "24 Hours"}", Created At: ${i.createdAt}`
+          ).join("\n");
+      }
+      else if (kw.includes("brief") || kw.includes("today") || kw.includes("overview") || kw.includes("summary") || kw.includes("24 hour") || kw.includes("happen")) {
+        topic = "brief";
+        const activeIssues = issuesList.filter(i => i.status !== "Resolved" && i.status !== "Closed");
+        const resolvedIssues = issuesList.filter(i => i.status === "Resolved" || i.status === "Closed");
+        const activeAndDispatched = issuesList.filter(i => i.dispatch);
+        const breachedIssues = activeAndDispatched.filter(i => {
+          return !getSLAComplianceOnServer(i.createdAt, i.dispatch?.responseSLA || "24 Hours", i.completionTime);
+        });
+        const complianceRate = activeAndDispatched.length > 0
+          ? Math.round(((activeAndDispatched.length - breachedIssues.length) / activeAndDispatched.length) * 100)
+          : 100;
+
+        selectedContext = `Today's Executive Operations Summary context:\n` +
+          `- Total Registered Citizen Reports: ${issuesList.length}\n` +
+          `- Unresolved Active Queue: ${activeIssues.length} incidents\n` +
+          `- Successfully Resolved Issues: ${resolvedIssues.length} incidents\n` +
+          `- Monitored Dispatched Work Orders: ${activeAndDispatched.length}\n` +
+          `- Outstanding SLA Breaches: ${breachedIssues.length}\n` +
+          `- Target SLA Compliance: ${complianceRate}%\n` +
+          `Most Urgent Unresolved Incidents:\n` +
+          activeIssues.sort((a,b) => (b.severity || 0) - (a.severity || 0)).slice(0, 5).map(i =>
+            `  * ID: ${i.id}, Title: "${i.title}", Department: "${i.dispatch?.department || "Unassigned"}", Ward: "${i.ward || "Pune"}", Severity: ${i.severity}/10, Cost of Inaction: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}`
+          ).join("\n");
+      }
+      else {
+        // Fallback / General / priorities
+        topic = "general";
+        const activeIssues = issuesList.filter(i => i.status !== "Resolved" && i.status !== "Closed");
+        const activeAndDispatched = issuesList.filter(i => i.dispatch);
+        const breachedIssues = activeAndDispatched.filter(i => {
+          return !getSLAComplianceOnServer(i.createdAt, i.dispatch?.responseSLA || "24 Hours", i.completionTime);
+        });
+
+        selectedContext = `General Pune Operations context:\n` +
+          `- Total active incidents: ${activeIssues.length}\n` +
+          `- Total resolved incidents: ${issuesList.filter(i => i.status === "Resolved" || i.status === "Closed").length}\n` +
+          `- SLA Breached counts: ${breachedIssues.length}\n` +
+          `Top 5 critical active issues:\n` +
+          activeIssues.sort((a,b) => (b.severity || 0) - (a.severity || 0)).slice(0, 5).map(i =>
+            `  * ID: ${i.id}, Title: "${i.title}", Department: "${i.dispatch?.department || "Unassigned"}", Ward: "${i.ward || "Pune"}", Severity: ${i.severity}/10, Cost of Inaction: ${formatRupees(i.costOfInaction?.repairCostNow || 4500)}`
+          ).join("\n");
+      }
+
+      // Check if history is present and build a short summary of previous turns
+      let conversationMemoryText = "";
+      if (Array.isArray(chatHistory) && chatHistory.length > 0) {
+        conversationMemoryText = `Recent Chat History (short-term conversational memory):\n` +
+          chatHistory.slice(-5).map(turn => 
+            `  - Sender: ${turn.sender === "commissioner" ? "Commissioner" : "Chief of Staff"}\n    Text: "${turn.text || ""}"`
+          ).join("\n") + `\n-----------------------\n`;
+      }
+
+      // If no API key, return a mock response matching the grounding data
+      if (!process.env.GEMINI_API_KEY || !ai) {
+        console.warn("⚠️ [COPILOT API] Local Fallback Activated (No API Key)");
+        // Construct a realistic response structured identical to the expected schema
+        const activeIssues = issuesList.filter(i => i.status !== "Resolved" && i.status !== "Closed");
+        const totalActiveRepairCost = activeIssues.reduce((sum, i) => sum + (i.costOfInaction?.repairCostNow || 4500), 0);
+        const activeAndDispatched = issuesList.filter(i => i.dispatch);
+        const breachedIssues = activeAndDispatched.filter(i => {
+          return !getSLAComplianceOnServer(i.createdAt, i.dispatch?.responseSLA || "24 Hours", i.completionTime);
+        });
+
+        const mockReply = {
+          executiveSummary: `Commissioner, I have analyzed the live incident ledger. We are managing ${activeIssues.length} unresolved incidents across the Corporation. Total remediation liabilities stand at ${formatRupees(totalActiveRepairCost)}, requiring tactical crew assignments.`,
+          reasoning: `Operational audits indicate that roads and water pipes are the main drivers of physical decay. Shivaji Nagar has the highest active incident density, leading to cumulative risk. Postponing these repairs will double our financial liabilities within 30 days.`,
+          recommendation: `My recommendation is to instruct the Roads Department and Water Supply units to immediately authorize tactical field-work dispatch packages to Shivaji Nagar.`,
+          supportingEvidence: [
+            `Active Cases: ${activeIssues.length} incidents in progress`,
+            `Exposure Liabilities: ${formatRupees(totalActiveRepairCost)} immediate cost`,
+            `Outstanding SLA Breaches: ${breachedIssues.length} requiring immediate escalations`
+          ],
+          followUpQuestions: [
+            `Why is Shivaji Nagar ranked highest?`,
+            `Which department needs additional staffing today?`,
+            `Estimate financial exposure.`
+          ],
+          topic: topic
+        };
+        return res.json({ success: true, result: mockReply, fallback: true });
+      }
+
+      // Call Gemini using structured JSON output
+      const copilotResponseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          executiveSummary: {
+            type: Type.STRING,
+            description: "A 2 to 4 sentence high-level executive briefing answering the user's question directly."
+          },
+          reasoning: {
+            type: Type.STRING,
+            description: "Detailed strategic reasoning explaining the 'why', identifying patterns, consequences of inaction, and connecting multiple operational observations."
+          },
+          recommendation: {
+            type: Type.STRING,
+            description: "Chief of Staff recommendation. Must begin with 'My recommendation is to [actionable next steps for the Commissioner]'."
+          },
+          supportingEvidence: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "A list of 2 to 4 concrete facts, numbers, departments, ward names, budgets, or incident counts grounded strictly in the provided data."
+          },
+          followUpQuestions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: "Exactly three suggested contextual follow-up questions for the Commissioner, based on the current context."
+          },
+          topic: {
+            type: Type.STRING,
+            description: "The topic area of the response. Must be one of: 'brief', 'budget', 'sla', 'department', 'ward', 'general'."
+          }
+        },
+        required: ["executiveSummary", "reasoning", "recommendation", "supportingEvidence", "followUpQuestions", "topic"]
+      };
+
+      const sysInstruction = `You are an experienced Municipal Chief of Staff and Executive Advisor to the Municipal Commissioner of Pune, Maharashtra.
+Your style of writing must be direct, highly professional, polished, objective, fluent, and commanding. Speak with professional authority and confidence.
+Avoid friendly conversational filler, emojis, or typical AI robotic phrases.
+You must strictly base all facts, figures, counts, and recommendations on the provided grounded municipal data. 
+Never hallucinate or invent fake cases, numbers, departments, or wards.
+If you do not have information in the provided data to answer a question, explicitly state so while still providing a professional response based on the available registry data.`;
+
+      const prompt = `Grounded Municipal Data Context:
+=======================================
+${selectedContext}
+=======================================
+
+${conversationMemoryText}Commissioner's Question:
+"${userQuery}"
+
+Based on the provided grounded municipal context and chat history, formulate your Executive Advisor response in the required JSON schema. Keep the tone human, professional, and authoritative. Set the topic to matches the category ('brief', 'budget', 'sla', 'department', 'ward', 'general').`;
+
+      console.log("🚀 [COPILOT API] Dispatching Request to Gemini 2.5 API...");
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: copilotResponseSchema,
+          systemInstruction: sysInstruction
+        }
+      });
+
+      const text = response.text;
+      console.log(`- Raw Copilot Response Output:\n--------------------\n${text}\n--------------------`);
+
+      if (!text) {
+        throw new Error("Empty response from Gemini.");
+      }
+
+      const parsedResult = JSON.parse(text);
+      return res.json({ success: true, result: parsedResult });
+
+    } catch (err: any) {
+      console.error("❌ [COPILOT API] Execution Failed:", err);
+      return res.status(500).json({ success: false, error: err.message || String(err) });
+    }
   });
 }

@@ -196,7 +196,7 @@ export default function CommissionerCopilot({
   ];
 
   // Helper to trigger responses
-  const triggerResponse = (responseType: string, userQueryText: string) => {
+  const triggerResponse = async (responseType: string, userQueryText: string) => {
     let resolvedIntent = responseType;
     if (responseType === "general") {
       resolvedIntent = classifyIntent(userQueryText, history);
@@ -219,8 +219,21 @@ export default function CommissionerCopilot({
 
     setActiveTopic(topic);
 
-    const assistantMsg = generateGroundedAnswer(resolvedIntent, userQueryText, history);
-    
+    const placeholderId = "a-thinking-" + Date.now();
+    const placeholderMsg: CopilotMessage = {
+      id: placeholderId,
+      sender: "assistant",
+      timestamp: new Date(),
+      executiveSummary: "Analyzing live municipal registry and formulating strategic report...",
+      reasoning: "Reviewing active work order queues, computing SLA performance indices, and evaluating cost-of-inaction multipliers...",
+      recommendation: "Please stand by. Formulating Chief of Staff assessment...",
+      supportingEvidence: ["Active database connection", "Grounded AI reasoning model"],
+      followUpQuestions: []
+    };
+
+    // Add commissioner message and thinking placeholder
+    setMessages(prev => [...prev, userMsg, placeholderMsg]);
+
     // Save to conversational context
     let entity = undefined;
     if (resolvedIntent === "risk" || resolvedIntent === "hotspots" || resolvedIntent === "why") {
@@ -234,9 +247,46 @@ export default function CommissionerCopilot({
       if (wasteCount > roadsCount && wasteCount > waterCount) overloadDept = "Solid Waste Management";
       entity = overloadDept;
     }
-
     setHistory(prev => [...prev, { query: userQueryText, intent: resolvedIntent, entity }]);
-    setMessages(prev => [...prev, userMsg, assistantMsg]);
+
+    try {
+      const response = await fetch("/api/copilot/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: userQueryText,
+          history: messages.map(m => ({
+            sender: m.sender,
+            text: m.sender === "commissioner" ? m.text : m.executiveSummary
+          }))
+        })
+      });
+      const data = await response.json();
+      if (data.success && data.result) {
+        const result = data.result;
+        const realAssistantMsg: CopilotMessage = {
+          id: "a-" + Date.now(),
+          sender: "assistant",
+          timestamp: new Date(),
+          executiveSummary: result.executiveSummary,
+          reasoning: result.reasoning,
+          recommendation: result.recommendation,
+          supportingEvidence: result.supportingEvidence,
+          followUpQuestions: result.followUpQuestions,
+          responseType: result.topic
+        };
+        setMessages(prev => prev.map(m => m.id === placeholderId ? realAssistantMsg : m));
+        if (result.topic) {
+          setActiveTopic(result.topic as any);
+        }
+      } else {
+        throw new Error(data.error || "Failed generation");
+      }
+    } catch (err) {
+      console.warn("Copilot API failed, using fallback engine:", err);
+      const fallbackMsg = generateGroundedAnswer(resolvedIntent, userQueryText, history);
+      setMessages(prev => prev.map(m => m.id === placeholderId ? fallbackMsg : m));
+    }
   };
 
   const handleFollowUpClick = (queryText: string) => {
