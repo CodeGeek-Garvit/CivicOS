@@ -85,6 +85,11 @@ export default function App() {
   const [showEmailPreview, setShowEmailPreview] = useState<boolean>(false);
   const [showSheetsPreview, setShowSheetsPreview] = useState<boolean>(false);
 
+  // Manual Review Workflow States
+  const [manualReviewTargetId, setManualReviewTargetId] = useState<string | null>(null);
+  const [manualReviewReason, setManualReviewReason] = useState<string>("");
+  const [manualReviewOtherNote, setManualReviewOtherNote] = useState<string>("");
+
   const GOOGLE_MAPS_KEY =
     process.env.GOOGLE_MAPS_PLATFORM_KEY ||
     (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
@@ -269,6 +274,10 @@ export default function App() {
       inspectionResult?: string;
       verifiedBy?: string;
       completionTime?: string;
+      verifications?: number;
+      disputes?: number;
+      manualReviewReason?: string;
+      manualReviewNote?: string;
     }
   ) => {
     try {
@@ -1782,7 +1791,7 @@ It is intended solely for authorized contractors and departmental officers.
 
                           {/* SPRINT ACTIONS: Approve, Manual Review, Reject */}
                           <div className="pt-3 border-t border-slate-200/60 mt-3 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Status:</span>
                               <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${
                                 displayStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
@@ -1790,8 +1799,13 @@ It is intended solely for authorized contractors and departmental officers.
                                 displayStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
                                 "bg-blue-50 text-blue-700 border-blue-200"
                               }`}>
-                                {displayStatus}
+                                {displayStatus === "Manual Review" ? "🟡 Manual Review" : displayStatus}
                               </span>
+                              {displayStatus === "Manual Review" && item.manualReviewReason && (
+                                <span className="text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-lg">
+                                  Reason: "{item.manualReviewReason}"
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-1">
@@ -1811,7 +1825,7 @@ It is intended solely for authorized contractors and departmental officers.
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleUpdateIssueStatus(item.id, "Manual Review");
+                                  setManualReviewTargetId(item.id);
                                 }}
                                 className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
                                   displayStatus === "Manual Review"
@@ -1856,6 +1870,125 @@ It is intended solely for authorized contractors and departmental officers.
       <footer className="mt-20 border-t border-slate-200 bg-white py-8 text-center" id="civicos-footer">
         <p className="text-xs text-slate-400 font-mono">CivicOS System Core • v2.0.0 (Sprint 2 Realtime) • Connected to Firebase Firestore</p>
       </footer>
+
+      {/* Manual Review Workflow Modal */}
+      <AnimatePresence>
+        {manualReviewTargetId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => {
+            setManualReviewTargetId(null);
+            setManualReviewReason("");
+            setManualReviewOtherNote("");
+          }}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-5"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
+                    <span className="font-extrabold text-sm">⚠️</span>
+                  </div>
+                  <h3 className="text-base font-extrabold text-slate-900">Initiate Municipal Manual Review</h3>
+                </div>
+                <p className="text-xs text-slate-500 font-medium">
+                  Select the primary municipal justification to route this autonomous intake record to Manual Review status.
+                </p>
+              </div>
+
+              <div className="space-y-2.5">
+                {[
+                  "Low AI Confidence",
+                  "Duplicate Report",
+                  "Insufficient Evidence",
+                  "Requires Site Inspection",
+                  "Wrong Category",
+                  "Other"
+                ].map((reason) => (
+                  <div
+                    key={reason}
+                    className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      manualReviewReason === reason
+                        ? "bg-amber-50/50 border-amber-300 ring-1 ring-amber-300"
+                        : "border-slate-200 hover:bg-slate-50 hover:border-slate-300"
+                    }`}
+                    onClick={() => {
+                      setManualReviewReason(reason);
+                      if (reason !== "Other") {
+                        setManualReviewOtherNote("");
+                      }
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="manualReviewReason"
+                      value={reason}
+                      checked={manualReviewReason === reason}
+                      onChange={() => {}} // handled by click container
+                      className="h-4 w-4 text-amber-600 border-slate-300 focus:ring-amber-500"
+                    />
+                    <span className="text-xs font-bold text-slate-800">{reason}</span>
+                  </div>
+                ))}
+              </div>
+
+              <AnimatePresence initial={false}>
+                {manualReviewReason === "Other" && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="space-y-1.5 overflow-hidden"
+                  >
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Custom Justification Note</label>
+                    <textarea
+                      rows={3}
+                      value={manualReviewOtherNote}
+                      onChange={(e) => setManualReviewOtherNote(e.target.value)}
+                      placeholder="Provide additional details regarding the manual review requirement..."
+                      className="w-full text-xs font-medium p-3 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 resize-none placeholder-slate-400"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManualReviewTargetId(null);
+                    setManualReviewReason("");
+                    setManualReviewOtherNote("");
+                  }}
+                  className="flex-1 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-2xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!manualReviewReason || (manualReviewReason === "Other" && !manualReviewOtherNote.trim())}
+                  onClick={async () => {
+                    if (!manualReviewTargetId) return;
+                    const finalReason = manualReviewReason === "Other" ? manualReviewOtherNote.trim() : manualReviewReason;
+                    await handleUpdateIssueStatus(manualReviewTargetId, "Manual Review", {
+                      manualReviewReason: finalReason,
+                      manualReviewNote: manualReviewReason === "Other" ? manualReviewOtherNote.trim() : undefined
+                    });
+                    setManualReviewTargetId(null);
+                    setManualReviewReason("");
+                    setManualReviewOtherNote("");
+                  }}
+                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-2xl shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  Confirm Review
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

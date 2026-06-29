@@ -657,12 +657,13 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
   // PATCH /api/issues/:id
   app.patch("/api/issues/:id", async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { status, afterImageUrl, inspectionResult, verifiedBy, completionTime, verifications, disputes } = req.body;
+    const { status, afterImageUrl, inspectionResult, verifiedBy, completionTime, verifications, disputes, manualReviewReason, manualReviewNote } = req.body;
 
     console.log(`\n==================================================`);
     console.log(`📥 [CIVICOS UPDATE PIPELINE] PATCH /api/issues/${id}`);
     console.log(`- New Status: ${status}`);
     console.log(`- Verifications: ${verifications}, Disputes: ${disputes}`);
+    console.log(`- Manual Review Reason: ${manualReviewReason}`);
     console.log(`==================================================\n`);
 
     if (!isFirestoreAvailable || !db) {
@@ -677,6 +678,8 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
           ...(completionTime !== undefined && { completionTime }),
           ...(verifications !== undefined && { verifications }),
           ...(disputes !== undefined && { disputes }),
+          ...(manualReviewReason !== undefined && { manualReviewReason }),
+          ...(manualReviewNote !== undefined && { manualReviewNote }),
         };
         return res.json({ success: true, issue: inMemoryIssues[idx] });
       }
@@ -700,6 +703,8 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
         ...(completionTime !== undefined && { completionTime }),
         ...(verifications !== undefined && { verifications }),
         ...(disputes !== undefined && { disputes }),
+        ...(manualReviewReason !== undefined && { manualReviewReason }),
+        ...(manualReviewNote !== undefined && { manualReviewNote }),
       };
 
       await setDoc(docRef, updatedData);

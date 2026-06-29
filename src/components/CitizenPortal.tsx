@@ -144,6 +144,9 @@ export default function CitizenPortal({
     return saved ? JSON.parse(saved) : {};
   });
 
+  // Track vote confirmations (e.g. success messages) per issue
+  const [voteConfirmations, setVoteConfirmations] = useState<Record<string, string>>({});
+
   // Track reports created in this session to label as "My Reports"
   const [myReportedIds, setMyReportedIds] = useState<string[]>(() => {
     const saved = localStorage.getItem("civicos_my_reported_ids");
@@ -476,6 +479,12 @@ export default function CitizenPortal({
       nextDisputes += 1;
       addPoints(10); // +10 points for participating in dispute audit
     }
+
+    // Set confirmation message
+    setVoteConfirmations(prev => ({
+      ...prev,
+      [id]: type === "verified" ? "✓ Your verification has been recorded." : "⚠ Your dispute has been recorded."
+    }));
 
     // Save vote state locally
     setVerifiedList(prev => ({
@@ -1102,51 +1111,54 @@ export default function CitizenPortal({
                               {/* Trust metric */}
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-1">
-                                  <span className="text-xs font-extrabold text-slate-800">{trustInfo.score}%</span>
+                                  <span className="text-xs font-extrabold text-slate-800">
+                                    <AnimatedCounter value={trustInfo.score} />%
+                                  </span>
                                   <span className="text-[10px] text-emerald-600 font-extrabold">Trust Score</span>
                                 </div>
                                 <span className="text-[9px] font-bold text-slate-400 block leading-none">
-                                  {trustInfo.label} • {(item.verifications || 0) + (item.disputes || 0)} votes
+                                  {trustInfo.label} • <AnimatedCounter value={(item.verifications || 0) + (item.disputes || 0)} /> votes
                                 </span>
                               </div>
 
-                              {/* Action buttons */}
-                              <div className="flex items-center gap-2">
-                                {hasVoted ? (
-                                  <div className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 ${
-                                    hasVoted === "verified" 
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-100" 
-                                      : "bg-rose-50 text-rose-700 border-rose-100"
-                                  }`}>
-                                    {hasVoted === "verified" ? (
-                                      <>
-                                        <ThumbsUp className="h-3.5 w-3.5 fill-current" />
-                                        <span>Verified (+100 pts)</span>
-                                      </>
+                              {/* Action buttons and confirmation messages */}
+                              <div className="flex flex-col items-end gap-1.5">
+                                <div className="flex items-center gap-2">
+                                  {hasVoted ? (
+                                    hasVoted === "verified" ? (
+                                      <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 fill-emerald-100" />
+                                        <span>✓ You verified this issue</span>
+                                      </div>
                                     ) : (
-                                      <>
-                                        <ThumbsDown className="h-3.5 w-3.5 fill-current" />
-                                        <span>Disputed (+10 pts)</span>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => handleVote(item.id, "verified")}
-                                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <ThumbsUp className="h-3.5 w-3.5" />
-                                      <span>Verify</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleVote(item.id, "disputed")}
-                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <ThumbsDown className="h-3.5 w-3.5" />
-                                      <span>Dispute</span>
-                                    </button>
-                                  </>
+                                      <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                                        <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
+                                        <span>⚠ You disputed this issue</span>
+                                      </div>
+                                    )
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => handleVote(item.id, "verified")}
+                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <ThumbsUp className="h-3.5 w-3.5" />
+                                        <span>Verify</span>
+                                      </button>
+                                      <button
+                                        onClick={() => handleVote(item.id, "disputed")}
+                                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <ThumbsDown className="h-3.5 w-3.5" />
+                                        <span>Dispute</span>
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                                {voteConfirmations[item.id] && (
+                                  <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg animate-pulse mt-1">
+                                    {voteConfirmations[item.id]}
+                                  </span>
                                 )}
                               </div>
 
@@ -1224,8 +1236,16 @@ export default function CitizenPortal({
                               )}
                               <div className="space-y-0.5">
                                 <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getStatusColor(item.status)}`}>
-                                  {item.status || "Reported"}
+                                  {item.status?.toLowerCase() === "manual review" ? "Municipal Review In Progress" : (item.status || "Reported")}
                                 </span>
+                                {item.status?.toLowerCase() === "manual review" && item.manualReviewReason && (
+                                  <div className="mt-1 flex items-center gap-1">
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase">Reason:</span>
+                                    <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                      {item.manualReviewReason}
+                                    </span>
+                                  </div>
+                                )}
                                 <h4 className="text-xs font-black text-slate-950 mt-1">{item.title}</h4>
                                 <p className="text-[10px] text-slate-400 font-mono">Incident ID: {item.id} • {new Date(item.createdAt).toLocaleDateString()}</p>
                               </div>
@@ -1375,8 +1395,16 @@ export default function CitizenPortal({
                                         <div>
                                           <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Current Status</span>
                                           <span className={`inline-block text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wide mt-0.5 ${getStatusColor(item.status)}`}>
-                                            {item.status || "Reported"}
+                                            {item.status?.toLowerCase() === "manual review" ? "Municipal Review In Progress" : (item.status || "Reported")}
                                           </span>
+                                          {item.status?.toLowerCase() === "manual review" && item.manualReviewReason && (
+                                            <div className="mt-1">
+                                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Reason</span>
+                                              <span className="text-[10px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                                                {item.manualReviewReason}
+                                              </span>
+                                            </div>
+                                          )}
                                         </div>
                                         <div>
                                           <span className="text-slate-400 font-bold block uppercase text-[8px] tracking-wider">Hazard Severity</span>

@@ -107,6 +107,8 @@ export interface SavedIssue extends GeminiAnalysis {
   completionTime?: string;
   verifications?: number;
   disputes?: number;
+  manualReviewReason?: string;
+  manualReviewNote?: string;
 }
 
 // Sprint 9: Incident Lifecycle State Definitions & Reusable State Machine
