@@ -43,6 +43,50 @@ const compressImage = (base64Str: string, maxWidth: number = 800, quality: numbe
   });
 };
 
+// Animated counter to smoothly transition values over 1 second
+function AnimatedCounter({ value, duration = 1000 }: { value: number; duration?: number }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const prevValueRef = useRef(value);
+
+  useEffect(() => {
+    const startValue = prevValueRef.current;
+    const endValue = value;
+    if (startValue === endValue) return;
+
+    const startTime = performance.now();
+    let animationFrameId: number;
+
+    const updateCounter = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      const easeOutQuad = (t: number) => t * (2 - t);
+      const easedProgress = easeOutQuad(progress);
+
+      const current = Math.round(startValue + (endValue - startValue) * easedProgress);
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(updateCounter);
+      } else {
+        prevValueRef.current = endValue;
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(updateCounter);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [value, duration]);
+
+  useEffect(() => {
+    prevValueRef.current = value;
+  }, [value]);
+
+  return <>{displayValue}</>;
+}
+
 interface CitizenPortalProps {
   issues: SavedIssue[];
   isLiveMode: boolean;
@@ -123,8 +167,118 @@ export default function CitizenPortal({
     localStorage.setItem("civicos_my_reported_ids", JSON.stringify(myReportedIds));
   }, [myReportedIds]);
 
-  const addPoints = (amount: number) => {
+  const [floatingRewards, setFloatingRewards] = useState<Array<{ id: string; text: string; x: number; y: number }>>([]);
+  const [toasts, setToasts] = useState<Array<{ id: string; points: number; message: string; achievementTitle?: string }>>([]);
+  const [highlightedBadgeId, setHighlightedBadgeId] = useState<string | null>(null);
+  const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
+  
+  const getUnlockedBadgeIds = (reportedIds: string[], votes: Record<string, "verified" | "disputed" | null>) => {
+    const unlocked: string[] = [];
+    if (reportedIds.length >= 1) {
+      unlocked.push("guardian");
+    }
+    const verificationsCount = Object.values(votes).filter(v => v === "verified").length;
+    if (verificationsCount >= 3) {
+      unlocked.push("contributor");
+    }
+    const hasHighSeverityReport = reportedIds.some(id => {
+      const iss = issues.find(i => i.id === id);
+      return iss && (iss.severity || 0) >= 8;
+    });
+    if (hasHighSeverityReport) {
+      unlocked.push("rapid");
+    }
+    return unlocked;
+  };
+
+  const isFirstLoadRef = useRef(true);
+  const prevBadgesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (issues.length > 0) {
+      const current = getUnlockedBadgeIds(myReportedIds, verifiedList);
+      
+      if (isFirstLoadRef.current) {
+        prevBadgesRef.current = current;
+        setUnlockedBadges(current);
+        isFirstLoadRef.current = false;
+      } else {
+        const newlyUnlocked = current.filter(id => !prevBadgesRef.current.includes(id));
+        if (newlyUnlocked.length > 0) {
+          newlyUnlocked.forEach(badgeId => {
+            let badgeName = "";
+            if (badgeId === "guardian") badgeName = "Community Guardian";
+            else if (badgeId === "contributor") badgeName = "Civic Contributor";
+            else if (badgeId === "rapid") badgeName = "Rapid Reporter";
+
+            // Trigger reward animation for unlocking the badge
+            const newToast = {
+              id: Math.random().toString(),
+              points: 0,
+              message: "Achievement Unlocked!",
+              achievementTitle: badgeName
+            };
+            setToasts(prev => [...prev, newToast]);
+
+            const newFloating = {
+              id: Math.random().toString(),
+              text: `🏆 ${badgeName} Unlocked!`,
+              x: window.innerWidth / 2,
+              y: window.innerHeight / 2 - 140
+            };
+            setFloatingRewards(prev => [...prev, newFloating]);
+
+            setTimeout(() => {
+              setToasts(prev => prev.filter(t => t.id !== newToast.id));
+            }, 3500);
+
+            // Highlight badge card
+            setHighlightedBadgeId(badgeId);
+            setTimeout(() => {
+              setHighlightedBadgeId(null);
+            }, 4000);
+          });
+        }
+        prevBadgesRef.current = current;
+        setUnlockedBadges(current);
+      }
+    }
+  }, [myReportedIds, verifiedList, issues]);
+
+  const addPoints = (amount: number, reason?: string) => {
     setRewardPoints(prev => prev + amount);
+
+    let displayReason = reason;
+    if (!displayReason) {
+      if (amount === 500) displayReason = "Issue Submitted Successfully";
+      else if (amount === 100) displayReason = "Community Issue Verified";
+      else if (amount === 10) displayReason = "Dispute Audit Contribution";
+      else displayReason = "Community Points Earned";
+    }
+
+    // Floating animation
+    const newFloating = {
+      id: Math.random().toString(),
+      text: `+${amount} Points`,
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2 - 100
+    };
+    setFloatingRewards(prev => [...prev, newFloating]);
+    setTimeout(() => {
+      setFloatingRewards(prev => prev.filter(f => f.id !== newFloating.id));
+    }, 1200);
+
+    // Show toast near top-right
+    const newToast = {
+      id: Math.random().toString(),
+      points: amount,
+      message: displayReason
+    };
+    setToasts(prev => [...prev, newToast]);
+
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== newToast.id));
+    }, 3000);
   };
 
   // Convert uploaded file to base64 (matching App.tsx)
@@ -537,6 +691,115 @@ export default function CitizenPortal({
         )}
       </AnimatePresence>
 
+      {/* Gamified Reward Custom Animations & Keyframes */}
+      <style>{`
+        @keyframes floatUpAndFade {
+          0% {
+            transform: translateY(0) scale(0.85);
+            opacity: 0;
+          }
+          15% {
+            transform: translateY(-20px) scale(1.1);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(-90px) scale(0.95);
+            opacity: 0;
+          }
+        }
+        @keyframes rewardToastIn {
+          0% {
+            transform: translate(30px, -20px) scale(0.9);
+            opacity: 0;
+          }
+          100% {
+            transform: translate(0, 0) scale(1);
+            opacity: 1;
+          }
+        }
+        @keyframes badgeGlowPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 25px 8px rgba(99, 102, 241, 0.7);
+            border-color: rgba(99, 102, 241, 0.85);
+            transform: scale(1.04);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+            border-color: rgba(99, 102, 241, 0.2);
+            transform: scale(1);
+          }
+        }
+        .animate-float-up {
+          animation: floatUpAndFade 1.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+        .animate-reward-toast {
+          animation: rewardToastIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        .badge-glow-pulse {
+          animation: badgeGlowPulse 2.2s cubic-bezier(0.25, 1, 0.5, 1) 1;
+        }
+      `}</style>
+
+      {/* Floating Reward Toasts Top-Right Container */}
+      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none max-w-sm w-full font-sans">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className="bg-white border-2 border-emerald-500 rounded-2xl p-4 shadow-2xl flex items-center gap-3.5 animate-reward-toast pointer-events-auto"
+            style={{ 
+              boxShadow: "0 12px 30px -4px rgba(16, 185, 129, 0.2)",
+              minHeight: "75px"
+            }}
+          >
+            {/* Green Success Icon or Trophy for Achievements */}
+            <div className="h-10 w-10 bg-emerald-100 border border-emerald-200 rounded-xl flex items-center justify-center text-emerald-600 shrink-0">
+              {toast.achievementTitle ? (
+                <Trophy className="h-5 w-5 text-amber-500 animate-bounce" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-emerald-600 fill-emerald-100" />
+              )}
+            </div>
+            
+            <div className="flex-1 min-w-0 text-left">
+              <span className="text-[10px] font-black uppercase text-emerald-600 tracking-wider block">
+                {toast.achievementTitle ? "🏆 Achievement Unlocked" : "✨ Reward Points Earned"}
+              </span>
+              <p className="text-xs font-black text-slate-950 leading-snug">
+                {toast.achievementTitle || toast.message}
+              </p>
+              {toast.points > 0 && (
+                <span className="text-xs font-black text-emerald-600 block mt-0.5 animate-pulse">
+                  +{toast.points} Points
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Floating particles upward points indicators */}
+      <div className="fixed inset-0 pointer-events-none z-[9999] overflow-hidden">
+        {floatingRewards.map((item) => (
+          <div
+            key={item.id}
+            className="absolute animate-float-up text-xs font-black text-emerald-700 bg-emerald-50 border-2 border-emerald-400 px-3.5 py-2 rounded-2xl shadow-xl flex items-center gap-1.5"
+            style={{
+              left: `${item.x}px`,
+              top: `${item.y}px`,
+              transform: "translate(-50%, -50%)"
+            }}
+          >
+            <span className="text-sm">⭐</span>
+            <span>{item.text}</span>
+          </div>
+        ))}
+      </div>
+
       {/* Citizen Top Header */}
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-blue-100 px-6 py-4 shadow-sm">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -557,12 +820,13 @@ export default function CitizenPortal({
             <motion.div 
               key={rewardPoints}
               initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
+              animate={{ scale: [1, 1.15, 1] }}
+              transition={{ duration: 0.4 }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-100 rounded-xl shadow-inner cursor-pointer"
               onClick={() => setCitizenTab("rewards")}
             >
               <Trophy className="h-4 w-4 text-emerald-600" />
-              <span className="text-xs font-black text-slate-800">{rewardPoints} pts</span>
+              <span className="text-xs font-black text-slate-800"><AnimatedCounter value={rewardPoints} /> pts</span>
             </motion.div>
 
             {/* Back Switcher */}
@@ -1191,7 +1455,7 @@ export default function CitizenPortal({
                   <div className="text-center sm:text-right border-t sm:border-t-0 border-white/10 pt-4 sm:pt-0 w-full sm:w-auto">
                     <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Total Community Score</span>
                     <span className="text-3xl font-black bg-gradient-to-r from-blue-400 to-emerald-300 bg-clip-text text-transparent">
-                      {rewardPoints} Points
+                      <AnimatedCounter value={rewardPoints} /> Points
                     </span>
                   </div>
                 </div>
@@ -1199,44 +1463,123 @@ export default function CitizenPortal({
                 {/* Badges Section */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
                   <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
-                    <Trophy className="h-4 w-4 text-yellow-500" />
+                    <Trophy className="h-4 w-4 text-yellow-500 animate-pulse" />
                     Unlocked Achievement Badges
                   </h4>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     
                     {/* Badge 1: Community Guardian */}
-                    <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
-                      <div className="h-10 w-10 bg-yellow-100 border border-yellow-200 rounded-xl flex items-center justify-center text-xl shrink-0">
-                        🏅
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-xs font-extrabold text-slate-900 block truncate">Community Guardian</span>
-                        <span className="text-[10px] text-slate-400 font-medium block">Awarded for active reporting</span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const isUnlocked = unlockedBadges.includes("guardian");
+                      const isHighlighted = highlightedBadgeId === "guardian";
+                      return (
+                        <div className={`border p-4 rounded-2xl flex flex-col justify-between relative transition-all duration-500 ${
+                          isHighlighted 
+                            ? "badge-glow-pulse border-indigo-500 bg-indigo-50/20" 
+                            : isUnlocked 
+                              ? "border-yellow-200 bg-yellow-50/30" 
+                              : "border-slate-100 bg-slate-50/50 opacity-45"
+                        }`}>
+                          {isHighlighted && (
+                            <span className="absolute -top-2.5 left-4 bg-indigo-600 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-md animate-bounce">
+                              Achievement Unlocked!
+                            </span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 transition-all duration-300 ${
+                              isUnlocked ? "bg-yellow-100 border border-yellow-200" : "bg-slate-100 border border-slate-200"
+                            }`}>
+                              {isUnlocked ? "🏅" : "🔒"}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-extrabold text-slate-900 block truncate">Community Guardian</span>
+                              <span className="text-[10px] text-slate-400 font-medium block leading-tight">Awarded for active reporting</span>
+                            </div>
+                          </div>
+                          {!isUnlocked && (
+                            <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
+                              Progress: {myReportedIds.length}/1 reported
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Badge 2: Civic Contributor */}
-                    <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
-                      <div className="h-10 w-10 bg-emerald-100 border border-emerald-200 rounded-xl flex items-center justify-center text-xl shrink-0">
-                        🌱
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-xs font-extrabold text-slate-900 block truncate">Civic Contributor</span>
-                        <span className="text-[10px] text-slate-400 font-medium block">Awarded for 3+ local verifications</span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const isUnlocked = unlockedBadges.includes("contributor");
+                      const isHighlighted = highlightedBadgeId === "contributor";
+                      const verificationsCount = Object.values(verifiedList).filter(v => v === "verified").length;
+                      return (
+                        <div className={`border p-4 rounded-2xl flex flex-col justify-between relative transition-all duration-500 ${
+                          isHighlighted 
+                            ? "badge-glow-pulse border-indigo-500 bg-indigo-50/20" 
+                            : isUnlocked 
+                              ? "border-emerald-200 bg-emerald-50/30" 
+                              : "border-slate-100 bg-slate-50/50 opacity-45"
+                        }`}>
+                          {isHighlighted && (
+                            <span className="absolute -top-2.5 left-4 bg-indigo-600 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-md animate-bounce">
+                              Achievement Unlocked!
+                            </span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 transition-all duration-300 ${
+                              isUnlocked ? "bg-emerald-100 border border-emerald-200" : "bg-slate-100 border border-slate-200"
+                            }`}>
+                              {isUnlocked ? "🌱" : "🔒"}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-extrabold text-slate-900 block truncate">Civic Contributor</span>
+                              <span className="text-[10px] text-slate-400 font-medium block leading-tight">Awarded for 3+ local verifications</span>
+                            </div>
+                          </div>
+                          {!isUnlocked && (
+                            <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
+                              Progress: {verificationsCount}/3 verifications
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Badge 3: Rapid Reporter */}
-                    <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50 flex items-center gap-3">
-                      <div className="h-10 w-10 bg-blue-100 border border-blue-200 rounded-xl flex items-center justify-center text-xl shrink-0">
-                        🏆
-                      </div>
-                      <div className="min-w-0">
-                        <span className="text-xs font-extrabold text-slate-900 block truncate">Rapid Reporter</span>
-                        <span className="text-[10px] text-slate-400 font-medium block">Submitting high-severity evidence</span>
-                      </div>
-                    </div>
+                    {(() => {
+                      const isUnlocked = unlockedBadges.includes("rapid");
+                      const isHighlighted = highlightedBadgeId === "rapid";
+                      return (
+                        <div className={`border p-4 rounded-2xl flex flex-col justify-between relative transition-all duration-500 ${
+                          isHighlighted 
+                            ? "badge-glow-pulse border-indigo-500 bg-indigo-50/20" 
+                            : isUnlocked 
+                              ? "border-blue-200 bg-blue-50/30" 
+                              : "border-slate-100 bg-slate-50/50 opacity-45"
+                        }`}>
+                          {isHighlighted && (
+                            <span className="absolute -top-2.5 left-4 bg-indigo-600 text-white text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-md animate-bounce">
+                              Achievement Unlocked!
+                            </span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 transition-all duration-300 ${
+                              isUnlocked ? "bg-blue-100 border border-blue-200" : "bg-slate-100 border border-slate-200"
+                            }`}>
+                              {isUnlocked ? "🏆" : "🔒"}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-extrabold text-slate-900 block truncate">Rapid Reporter</span>
+                              <span className="text-[10px] text-slate-400 font-medium block leading-tight">Submitting high-severity evidence</span>
+                            </div>
+                          </div>
+                          {!isUnlocked && (
+                            <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
+                              Unlock: Submit high severity issue (Sev 8+)
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                   </div>
                 </div>
