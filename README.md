@@ -33,7 +33,7 @@ https://docs.google.com/document/d/1sXU2FyDQi7izfWy8KSJiKRiOteDAA7ZAMNCNKm6U70o/
 
 # Architecture
 
-
+![System Architecture](civicos1.png)
 
 The platform follows a hybrid AI architecture where Gemini performs multimodal perception while deterministic intelligence engines make operational municipal decisions.
 
@@ -41,7 +41,7 @@ The platform follows a hybrid AI architecture where Gemini performs multimodal p
 
 # AI Processing Pipeline
 
-![Pipeline](docs/ai_pipeline.png)
+![Decision Pipeline](civicos2.png)
 
 Citizen Report
 
@@ -317,7 +317,75 @@ README.md
 ```
 
 ---
+# Screenshots
 
+## 🏛️ System Architecture
+
+![System Architecture](civicos1.png)
+
+---
+
+## 🔄 Decision Pipeline
+
+![Decision Pipeline](civicos2.png)
+
+---
+
+## 🖥️ Executive Command Center
+
+![Executive Command Center](Executive%20Command%20Center.png)
+
+---
+
+## 🤖 AI Vision Analysis
+
+![AI Vision Analysis](AI%20Vision%20Analysis.png)
+
+---
+
+## 📊 Executive Dashboard & Decision Timeline
+
+![Executive Dashboard](Executive%20Dashboard%20%26%20Decision%20Timeline.png)
+
+---
+
+## 🌍 Operations Advisor
+
+![Operations Advisor](Operations%20Advisor.png)
+
+---
+
+## 🧠 Commissioner Copilot
+
+![Commissioner Copilot](Commissioner%20Copilot.png)
+
+---
+
+## 🚨 Incident Execution Center
+
+![Incident Execution Center](Incident%20Execution%20Center.png)
+
+---
+
+## 📧 Automated Dispatch Email
+
+![Dispatch Email](Dispatch%20Email.png)
+
+---
+
+## 💰 Cost of Inaction Engine
+
+![Cost of Inaction](Cost%20of%20Inaction.png)
+
+---
+
+## 👥 Nearby Citizen Verification
+
+![Nearby Verification](Nearby%20Verification.png)
+
+---
+
+# Technical Architecture
 # Author
 
 Garvit Sharma
