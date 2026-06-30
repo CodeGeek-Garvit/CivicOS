@@ -1131,6 +1131,25 @@ function MapDashboardContent({
                 )}
               </div>
 
+              {/* Severity Legend */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Severity Legend</h4>
+                <div className="flex flex-col gap-2 text-[10px] font-bold text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-rose-500"></span>
+                    <span>Critical (8-10)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-amber-500"></span>
+                    <span>High (5-7)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                    <span>Low (1-4)</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Proper Google Places Autocomplete Search Box */}
               <div className="relative">
                 <form onSubmit={handleSearchSubmit}>
@@ -1229,73 +1248,6 @@ function MapDashboardContent({
               </div>
             </div>
 
-            {/* ARCHITECTURE PREPARATION FOR SPRINT 2 (Locked Modules) */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <Cpu className="h-4.5 w-4.5 text-indigo-600" />
-                <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-widest">Sprint 2 Architecture</h4>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                The core routing schema and type signatures have been compiled. Ready for deployment in subsequent sprints.
-              </p>
-
-              <div className="space-y-2 text-xs">
-                {/* Heatmaps */}
-                <div className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="h-4 w-4 text-slate-400" />
-                    <span className="font-bold text-slate-700">D3/deck.gl Spatial Heatmaps</span>
-                  </div>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 border border-indigo-100 rounded-full flex items-center gap-1">
-                    <Lock className="h-2 w-2" /> STRUCT READY
-                  </span>
-                </div>
-
-                {/* Duplicate Detection */}
-                <div className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="h-4 w-4 text-slate-400" />
-                    <span className="font-bold text-slate-700">Text & Proximity Duplicate Check</span>
-                  </div>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 border border-indigo-100 rounded-full flex items-center gap-1">
-                    <Lock className="h-2 w-2" /> STRUCT READY
-                  </span>
-                </div>
-
-                {/* Shadow Problems */}
-                <div className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <HelpCircle className="h-4 w-4 text-slate-400" />
-                    <span className="font-bold text-slate-700">Under-reported Shadow Problems</span>
-                  </div>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 border border-indigo-100 rounded-full flex items-center gap-1">
-                    <Lock className="h-2 w-2" /> STRUCT READY
-                  </span>
-                </div>
-
-                {/* Priority Engine */}
-                <div className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-slate-400" />
-                    <span className="font-bold text-slate-700">Priority Dispatch Engine</span>
-                  </div>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 border border-indigo-100 rounded-full flex items-center gap-1">
-                    <Lock className="h-2 w-2" /> STRUCT READY
-                  </span>
-                </div>
-
-                {/* Authority Dashboard */}
-                <div className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-slate-400" />
-                    <span className="font-bold text-slate-700">Authority Dispatch Console</span>
-                  </div>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 border border-indigo-100 rounded-full flex items-center gap-1">
-                    <Lock className="h-2 w-2" /> STRUCT READY
-                  </span>
-                </div>
-              </div>
-            </div>
           </>
         ) : sidebarTab === "analytics" ? (
           <div className="space-y-5" id="municipal-intelligence-hub">
@@ -1577,58 +1529,16 @@ function MapDashboardContent({
       {/* RIGHT COLUMN: Map Frame (8 cols) */}
       <div className="xl:col-span-8 bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-hidden relative flex flex-col h-full" id="map-dashboard-canvas">
         
-        {/* Floating Top Stats / Legend Bar */}
-        <div className="absolute top-4 left-4 right-4 z-10 flex flex-wrap gap-2 items-center justify-between bg-slate-950/90 backdrop-blur border border-slate-800 rounded-2xl p-3 shadow-lg" id="map-canvas-controls">
-          <div className="flex items-center gap-4 text-white">
-            <div className="flex items-center gap-2">
-              <MapIcon className="h-5 w-5 text-indigo-500" />
-              <div>
-                <p className="text-xs font-extrabold">Geographic Centrifuge Panel</p>
-                <p className="text-[9px] text-slate-400 font-medium">Displaying {filteredIssues.length} active markers of {issues.length} total</p>
-              </div>
-            </div>
-            
-            {/* Live vs Demo Visual Status Badge */}
-            <div className="flex items-center gap-2">
-              {isLiveMode ? (
-                <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold px-2.5 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Live GIS Active
-                </span>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold px-2.5 py-1 rounded-full flex items-center gap-1 uppercase tracking-wider">
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
-                    Demo Active
-                  </span>
-                  <button
-                    onClick={onPromptGPS}
-                    disabled={gpsStatus === "requesting"}
-                    className="text-[8px] bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-2 py-1 rounded transition-all uppercase tracking-wide"
-                  >
-                    {gpsStatus === "requesting" ? "Connecting..." : "Enable GPS"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Pin color legend */}
-          <div className="flex items-center gap-3.5 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-1.5 text-[10px] font-bold text-slate-300">
-            <span className="text-[9px] text-slate-500 uppercase">PRIORITY LEGEND:</span>
-            <div className="flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-full bg-rose-500 border border-rose-400"></span>
-              <span>Critical (8-10)</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-500 border border-amber-400"></span>
-              <span>High (5-7)</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 border border-emerald-400"></span>
-              <span>Low (1-4)</span>
-            </div>
-          </div>
+        {/* Floating Live Status Chip */}
+        <div className="absolute top-4 left-4 z-10 bg-slate-950/80 backdrop-blur border border-slate-700/50 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full ${isLiveMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
+          <span className="text-[10px] font-bold text-white tracking-wider uppercase">
+            {isLiveMode ? "LIVE GIS ACTIVE" : "DEMO GIS ACTIVE"}
+          </span>
+          <span className="text-[10px] text-slate-400">|</span>
+          <span className="text-[10px] font-bold text-slate-300">
+            {filteredIssues.length} active markers
+          </span>
         </div>
 
         {/* Map Core Canvas */}
@@ -1748,7 +1658,7 @@ function MapDashboardContent({
 
         {/* Floating Bottom Card: Detailed focus view of active marker */}
         {selectedIssue && (
-          <div className="absolute bottom-4 left-4 right-4 z-10 bg-slate-950/95 backdrop-blur border border-slate-800 rounded-2xl p-4 text-white shadow-xl flex gap-4 max-h-[160px] overflow-hidden" id="focus-issue-panel">
+          <div className="absolute bottom-4 left-4 right-4 z-10 bg-slate-950/95 backdrop-blur border border-slate-800 rounded-2xl p-4 text-white shadow-xl flex gap-4 max-h-[120px] overflow-hidden" id="focus-issue-panel">
             {selectedIssue.imageUrl && (
               <img 
                 src={selectedIssue.imageUrl} 
