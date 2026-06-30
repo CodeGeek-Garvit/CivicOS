@@ -1530,7 +1530,7 @@ function MapDashboardContent({
       <div className="xl:col-span-8 bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-hidden relative flex flex-col h-full" id="map-dashboard-canvas">
         
         {/* Floating Live Status Chip */}
-        <div className="absolute top-4 left-4 z-10 bg-slate-950/80 backdrop-blur border border-slate-700/50 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-slate-950/80 backdrop-blur border border-slate-700/50 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2">
           <span className={`h-2 w-2 rounded-full ${isLiveMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
           <span className="text-[10px] font-bold text-white tracking-wider uppercase">
             {isLiveMode ? "LIVE GIS ACTIVE" : "DEMO GIS ACTIVE"}
