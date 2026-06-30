@@ -60,12 +60,13 @@ export default function App() {
   const [rawAnalysisResult, setRawAnalysisResult] = useState<GeminiAnalysis | null>(null);
   const analysisResult = React.useMemo(() => {
     if (!rawAnalysisResult) return null;
+    const rawAsAny = rawAnalysisResult as any;
     const tempIssue: SavedIssue = {
-      id: "temp_analysis",
-      imageUrl: "",
-      status: "Reported",
-      createdAt: new Date().toISOString(),
-      location: { latitude: 18.5204, longitude: 73.8567 },
+      id: rawAsAny.id || "temp_analysis",
+      imageUrl: rawAsAny.imageUrl || "",
+      status: rawAsAny.status || "Reported",
+      createdAt: rawAsAny.createdAt || new Date().toISOString(),
+      location: rawAsAny.location || { latitude: 18.5204, longitude: 73.8567 },
       ...rawAnalysisResult
     };
     return enrichIssue(tempIssue);
@@ -311,6 +312,12 @@ export default function App() {
         console.log(`[CIVICOS LIFE SYNC] Status updated for ${id} to ${newStatus}`);
         if (data.issue) {
           setSavedIssuesList(prev => prev.map(item => item.id === id ? { ...item, ...data.issue } : item));
+          setRawAnalysisResult(prev => {
+            if (prev && (prev as any).id === id) {
+              return { ...prev, ...data.issue };
+            }
+            return prev;
+          });
         }
       } else {
         console.error("Failed to update status:", data.error);
@@ -625,6 +632,292 @@ export default function App() {
     );
   }
 
+  const renderEvidenceAcquisitionPanel = () => (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="upload-panel">
+      <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold">1</span>
+        Evidence Acquisition
+      </h3>
+
+      {/* Drag-and-Drop Area */}
+      <div 
+        className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+          selectedImage 
+            ? "border-slate-300 bg-slate-50" 
+            : "border-indigo-200 bg-indigo-50/20 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer"
+        }`}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onClick={() => !selectedImage && fileInputRef.current?.click()}
+        id="uploader-drop-zone"
+      >
+        <input 
+          type="file" 
+          ref={fileInputRef} 
+          onChange={handleFileChange} 
+          accept="image/*" 
+          className="hidden" 
+        />
+
+        {selectedImage ? (
+          <div className="space-y-4" id="preview-container">
+            <img 
+              src={selectedImage} 
+              alt="Uploaded civic evidence" 
+              className="max-h-64 mx-auto rounded-lg object-contain shadow-md border border-slate-200 bg-white"
+            />
+            <div className="flex items-center justify-center gap-3">
+              <button 
+                onClick={resetUploader}
+                className="px-4 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-all"
+                id="btn-remove-photo"
+              >
+                Remove Photo
+              </button>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all"
+                id="btn-change-photo"
+              >
+                Change Photo
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 py-6" id="upload-prompt-container">
+            <div className="mx-auto w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
+              <Upload className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">Drag & drop your issue image here</p>
+              <p className="text-xs text-slate-500 mt-1">or click to browse local files</p>
+            </div>
+            <div className="text-[11px] text-slate-400 font-medium">Supports PNG, JPG, JPEG, and WebP (Max 10MB)</div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons & Process Feedback */}
+      {selectedImage && !analysisResult && (
+        <div className="mt-6" id="analyze-actions">
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing}
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold text-sm py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-75 transition-all"
+            id="btn-trigger-analysis"
+          >
+            {analyzing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Processing with AI...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                <span>Run Gemini Vision Diagnostic</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Error Box */}
+      {error && (
+        <div className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700" id="error-container">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-rose-800">Pipeline Fault Detected</h4>
+            <p className="text-sm mt-1 font-medium">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Active Loading Feedback Steps */}
+      {analyzing && (
+        <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="loading-steps-indicator">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Analysis Stream</span>
+            <span className="text-xs font-mono text-indigo-600 font-semibold animate-pulse">Running Diagnostic</span>
+          </div>
+          <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-full bg-indigo-600 rounded-full animate-pulse" style={{ width: "70%" }}></div>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />
+            <span>{analysisStep}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderDiagnosticLogPanel = () => (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="process-log-panel">
+      <h4 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wider">Diagnostic Log</h4>
+      <div className="space-y-3" id="diagnostic-log-steps">
+        <div className="flex items-center gap-2.5 text-xs font-semibold text-emerald-600">
+          <div className="h-5 w-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[10px]">1</div>
+          <span>Client-Side Payload Prepared</span>
+        </div>
+        <div className={`flex items-center gap-2.5 text-xs font-semibold ${analyzing ? "text-indigo-600" : analysisResult ? "text-emerald-600" : "text-slate-400"}`}>
+          <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${analyzing ? "bg-indigo-50 border border-indigo-200 text-indigo-600" : analysisResult ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>2</div>
+          <span>Gemini Vision Inference Call</span>
+        </div>
+        <div className={`flex items-center gap-2.5 text-xs font-semibold ${analysisResult ? "text-emerald-600" : "text-slate-400"}`}>
+          <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${analysisResult ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>3</div>
+          <span>JSON Payload Struct Validation</span>
+        </div>
+        <div className={`flex items-center gap-2.5 text-xs font-semibold ${saveSuccess ? "text-emerald-600" : "text-slate-400"}`}>
+          <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${saveSuccess ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>4</div>
+          <span>Firestore Transaction Committed</span>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderFirestoreRegistryAudit = () => (
+    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="recent-ledger-panel">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-base font-bold text-slate-950 flex items-center gap-2">
+            <Database className="h-4 w-4 text-indigo-600" />
+            Firestore Registry Audit
+          </h3>
+          <p className="text-xs text-slate-500 font-medium">Live issues list committed to the database</p>
+        </div>
+        <button 
+          onClick={fetchIssues} 
+          disabled={loadingList}
+          className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all"
+          id="btn-refresh-ledger"
+          title="Refresh Audit"
+        >
+          <RefreshCw className={`h-4 w-4 ${loadingList ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {loadingList && savedIssuesList.length === 0 ? (
+        <div className="py-8 text-center text-slate-500 space-y-2" id="ledger-loading">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" />
+          <p className="text-xs font-semibold">Reading Firestore collection index...</p>
+        </div>
+      ) : savedIssuesList.length === 0 ? (
+        <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl" id="ledger-empty">
+          <p className="text-xs text-slate-500 font-semibold">No issues currently committed in database registry.</p>
+        </div>
+      ) : (
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-1" id="ledger-list">
+          {savedIssuesList.map((item) => {
+            const displayStatus = (item.status === "reported" || !item.status || item.status.toLowerCase() === "submitted") ? "Submitted" : item.status;
+            return (
+              <div 
+                key={item.id} 
+                onClick={() => {
+                  setAnalysisResult(item);
+                  setSelectedImage(item.imageUrl);
+                }}
+                className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start cursor-pointer hover:shadow-sm"
+                id={`ledger-item-${item.id}`}
+              >
+                {item.imageUrl && (
+                  <img 
+                    src={item.imageUrl} 
+                    alt="Evidence preview" 
+                    className="h-16 w-16 rounded-lg object-cover bg-white border border-slate-200 shrink-0"
+                  />
+                )}
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getCategoryDetails(item.issueType).color}`}>
+                      {getCategoryDetails(item.issueType).label}
+                    </span>
+                    <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getSeverityStyle(item.severity).bg} ${getSeverityStyle(item.severity).text} ${getSeverityStyle(item.severity).border}`}>
+                      Sev: {item.severity}
+                    </span>
+                    {item.isFallback ? (
+                      <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded uppercase font-sans">
+                        Fallback Analysis
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded uppercase font-sans">
+                        Gemini Analysis
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
+                  <p className="text-[11px] text-slate-600 font-medium line-clamp-1">{item.description}</p>
+                  <p className="text-[10px] text-slate-400 font-mono font-medium">ID: {item.id} • {new Date(item.createdAt).toLocaleString()}</p>
+
+                  {/* SPRINT ACTIONS: Approve, Manual Review, Reject */}
+                  <div className="pt-3 border-t border-slate-200/60 mt-3 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Status:</span>
+                      <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${
+                        displayStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                        displayStatus === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                        displayStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                        "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        {displayStatus === "Manual Review" ? "🟡 Manual Review" : displayStatus}
+                      </span>
+                      {displayStatus === "Manual Review" && item.manualReviewReason && (
+                        <span className="text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-lg">
+                          Reason: "{item.manualReviewReason}"
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateIssueStatus(item.id, "Approved");
+                        }}
+                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                          displayStatus === "Approved"
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                            : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                        }`}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setManualReviewTargetId(item.id);
+                        }}
+                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                          displayStatus === "Manual Review"
+                            ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                            : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
+                        }`}
+                      >
+                        Manual Review
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateIssueStatus(item.id, "Rejected");
+                        }}
+                        className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
+                          displayStatus === "Rejected"
+                            ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                            : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+                        }`}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" id="civicos-root">
       {/* Sleek Navigation Bar */}
@@ -812,165 +1105,26 @@ export default function App() {
             </div>
 
             {/* Workspace Columns */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="pipeline-workspace">
-          
-          {/* LEFT SIDE: Media Intake & Trigger Engine */}
-          <div className="lg:col-span-5 space-y-6" id="left-workspace-column">
-            
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="upload-panel">
-              <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold">1</span>
-                Evidence Acquisition
-              </h3>
+            {analysisResult ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="pipeline-workspace-active">
+                  {/* LEFT SIDE: Media Intake & Trigger Engine */}
+                  <div className="lg:col-span-5 space-y-6" id="left-workspace-column">
+                    {renderEvidenceAcquisitionPanel()}
+                    {renderDiagnosticLogPanel()}
+                  </div>
 
-              {/* Drag-and-Drop Area */}
-              <div 
-                className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${
-                  selectedImage 
-                    ? "border-slate-300 bg-slate-50" 
-                    : "border-indigo-200 bg-indigo-50/20 hover:bg-indigo-50/50 hover:border-indigo-400 cursor-pointer"
-                }`}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onClick={() => !selectedImage && fileInputRef.current?.click()}
-                id="uploader-drop-zone"
-              >
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleFileChange} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-
-                {selectedImage ? (
-                  <div className="space-y-4" id="preview-container">
-                    <img 
-                      src={selectedImage} 
-                      alt="Uploaded civic evidence" 
-                      className="max-h-64 mx-auto rounded-lg object-contain shadow-md border border-slate-200 bg-white"
-                    />
-                    <div className="flex items-center justify-center gap-3">
-                      <button 
-                        onClick={resetUploader}
-                        className="px-4 py-2 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-all"
-                        id="btn-remove-photo"
+                  {/* RIGHT SIDE: Structured AI Diagnostic Results & Verification Ledger */}
+                  <div className="lg:col-span-7 space-y-8" id="right-workspace-column">
+                    <AnimatePresence mode="wait">
+                      <motion.div 
+                        key="analysis-workspace-container"
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -15 }}
+                        className="space-y-6"
+                        id="analysis-workspace-container"
                       >
-                        Remove Photo
-                      </button>
-                      <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all"
-                        id="btn-change-photo"
-                      >
-                        Change Photo
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4 py-6" id="upload-prompt-container">
-                    <div className="mx-auto w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
-                      <Upload className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">Drag & drop your issue image here</p>
-                      <p className="text-xs text-slate-500 mt-1">or click to browse local files</p>
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-medium">Supports PNG, JPG, JPEG, and WebP (Max 10MB)</div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons & Process Feedback */}
-              {selectedImage && !analysisResult && (
-                <div className="mt-6" id="analyze-actions">
-                  <button
-                    onClick={handleAnalyze}
-                    disabled={analyzing}
-                    className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold text-sm py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-75 transition-all"
-                    id="btn-trigger-analysis"
-                  >
-                    {analyzing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Processing with AI...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4" />
-                        <span>Run Gemini Vision Diagnostic</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-
-              {/* Error Box */}
-              {error && (
-                <div className="mt-4 p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-rose-700" id="error-container">
-                  <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-xs font-extrabold uppercase tracking-wide text-rose-800">Pipeline Fault Detected</h4>
-                    <p className="text-sm mt-1 font-medium">{error}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Active Loading Feedback Steps */}
-              {analyzing && (
-                <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="loading-steps-indicator">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Analysis Stream</span>
-                    <span className="text-xs font-mono text-indigo-600 font-semibold animate-pulse">Running Diagnostic</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-600 rounded-full animate-pulse" style={{ width: "70%" }}></div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />
-                    <span>{analysisStep}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Pipeline State Status */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="process-log-panel">
-              <h4 className="text-sm font-bold text-slate-900 mb-3 uppercase tracking-wider">Diagnostic Log</h4>
-              <div className="space-y-3" id="diagnostic-log-steps">
-                <div className="flex items-center gap-2.5 text-xs font-semibold text-emerald-600">
-                  <div className="h-5 w-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-[10px]">1</div>
-                  <span>Client-Side Payload Prepared</span>
-                </div>
-                <div className={`flex items-center gap-2.5 text-xs font-semibold ${analyzing ? "text-indigo-600" : analysisResult ? "text-emerald-600" : "text-slate-400"}`}>
-                  <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${analyzing ? "bg-indigo-50 border border-indigo-200 text-indigo-600" : analysisResult ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>2</div>
-                  <span>Gemini Vision Inference Call</span>
-                </div>
-                <div className={`flex items-center gap-2.5 text-xs font-semibold ${analysisResult ? "text-emerald-600" : "text-slate-400"}`}>
-                  <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${analysisResult ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>3</div>
-                  <span>JSON Payload Struct Validation</span>
-                </div>
-                <div className={`flex items-center gap-2.5 text-xs font-semibold ${saveSuccess ? "text-emerald-600" : "text-slate-400"}`}>
-                  <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] ${saveSuccess ? "bg-emerald-50 border border-emerald-200 text-emerald-600" : "bg-slate-50 border border-slate-200"}`}>4</div>
-                  <span>Firestore Transaction Committed</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT SIDE: Structured AI Diagnostic Results & Verification Ledger */}
-          <div className="lg:col-span-7 space-y-8" id="right-workspace-column">
-            
-            <AnimatePresence mode="wait">
-              {analysisResult ? (
-                <motion.div 
-                  key="analysis-workspace-container"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  className="space-y-6"
-                  id="analysis-workspace-container"
-                >
                   <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="analysis-result-card">
                     {/* Status Banner */}
                     <div className={`px-6 py-4 flex items-center justify-between text-white ${analysisResult.isFallback ? "bg-rose-950" : "bg-indigo-900"}`} id="analysis-banner-header">
@@ -1012,6 +1166,21 @@ export default function App() {
                               Gemini Analysis
                             </span>
                           )}
+                          {analysisResult.id !== "temp_analysis" && (() => {
+                            const detailStatus = (analysisResult.status === "reported" || !analysisResult.status || analysisResult.status.toLowerCase() === "submitted")
+                              ? "Submitted"
+                              : analysisResult.status;
+                            return (
+                              <span className={`text-xs font-bold px-3 py-1 border rounded-full uppercase tracking-wider ${
+                                detailStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                detailStatus === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                detailStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                "bg-blue-50 text-blue-700 border-blue-200"
+                              }`}>
+                                Status: {detailStatus === "Manual Review" ? "🟡 Manual Review" : detailStatus}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <h3 className="text-2xl font-black tracking-tight text-slate-950 leading-tight">
                           {analysisResult.title}
@@ -1057,6 +1226,97 @@ export default function App() {
                         </div>
                       </div>
 
+                      {/* Review Decision Bar (Sprint 2 Moderation Sync) */}
+                      {analysisResult.id !== "temp_analysis" && (() => {
+                        const detailStatus = (analysisResult.status === "reported" || !analysisResult.status || analysisResult.status.toLowerCase() === "submitted")
+                          ? "Submitted"
+                          : analysisResult.status;
+                        const isModerated = detailStatus === "Approved" || detailStatus === "Rejected" || detailStatus === "Manual Review";
+
+                        return (
+                          <div className="border-y border-slate-100 py-5 space-y-3" id="detail-review-decision-bar">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                Commissioner Moderation Workspace
+                              </h4>
+                              {isModerated ? (
+                                <span className={`text-xs font-black uppercase flex items-center gap-1 ${
+                                  detailStatus === "Approved" ? "text-emerald-600" :
+                                  detailStatus === "Rejected" ? "text-rose-600" :
+                                  "text-amber-600"
+                                }`}>
+                                  STATUS: {detailStatus === "Approved" ? "APPROVED ✓" : detailStatus === "Rejected" ? "REJECTED ❌" : "MANUAL REVIEW 🟡"} (Decision Locked)
+                                </span>
+                              ) : (
+                                <span className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600"></span>
+                                  Awaiting Moderation
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-3">
+                              <button
+                                disabled={isModerated}
+                                onClick={async () => {
+                                  await handleUpdateIssueStatus(analysisResult.id, "Approved");
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
+                                  detailStatus === "Approved"
+                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                    : isModerated
+                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
+                                      : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+                                }`}
+                                title="Approve Issue"
+                              >
+                                <span>✅</span> Approve
+                              </button>
+
+                              <button
+                                disabled={isModerated}
+                                onClick={() => {
+                                  setManualReviewTargetId(analysisResult.id);
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
+                                  detailStatus === "Manual Review"
+                                    ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                                    : isModerated
+                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
+                                      : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
+                                }`}
+                                title="Route to Manual Review"
+                              >
+                                <span>🟡</span> Manual Review
+                              </button>
+
+                              <button
+                                disabled={isModerated}
+                                onClick={async () => {
+                                  await handleUpdateIssueStatus(analysisResult.id, "Rejected");
+                                }}
+                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
+                                  detailStatus === "Rejected"
+                                    ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                                    : isModerated
+                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
+                                      : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
+                                }`}
+                                title="Reject Issue"
+                              >
+                                <span>❌</span> Reject
+                              </button>
+                            </div>
+
+                            {detailStatus === "Manual Review" && analysisResult.manualReviewReason && (
+                              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 font-medium">
+                                <span className="font-extrabold">Manual Review Justification:</span> "{analysisResult.manualReviewReason}"
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
                       {/* Rationale Bullet Points */}
                       <div className="border-t border-slate-100 pt-5">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">AI Diagnostic Evidence & Rationale</h4>
@@ -1072,7 +1332,15 @@ export default function App() {
 
                       {/* Save Submission Action */}
                       <div className="border-t border-slate-100 pt-5">
-                        {saveSuccess ? (
+                        {analysisResult.id !== "temp_analysis" ? (
+                          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3" id="ledger-saved-badge">
+                            <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
+                            <div>
+                              <p className="text-sm font-bold">Issue Registered in Secure Ledger</p>
+                              <p className="text-xs mt-0.5 text-emerald-600">This record is securely committed to Firestore collection `/issues`.</p>
+                            </div>
+                          </div>
+                        ) : saveSuccess ? (
                           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3">
                             <CheckCircle className="h-5 w-5 text-emerald-600 shrink-0" />
                             <div>
@@ -1103,6 +1371,13 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Subsequent Centered Full Width Workflow */}
+          <div className="mt-8 space-y-8 max-w-4xl mx-auto" id="pipeline-subsequent-flow">
                                {/* COST OF INACTION CARD (Sprint 3) */}
                   {(() => {
                     const costOfInaction = analysisResult?.costOfInaction || {};
@@ -1724,168 +1999,38 @@ It is intended solely for authorized contractors and departmental officers.
                       </div>
                     );
                   })()}
-                </motion.div>
-              ) : (
-                <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm" id="empty-analysis-container">
-                  <div className="mx-auto w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4">
-                    <Sparkles className="h-6 w-6" />
+                  {renderFirestoreRegistryAudit()}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Stage 1 Layout: Two-column layout for upload + waiting state */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start" id="pipeline-workspace-empty">
+                  {/* LEFT SIDE: Media Intake & Trigger Engine */}
+                  <div className="lg:col-span-5 space-y-6" id="left-workspace-column">
+                    {renderEvidenceAcquisitionPanel()}
+                    {renderDiagnosticLogPanel()}
                   </div>
-                  <h3 className="text-base font-bold text-slate-900">Awaiting Image Intake</h3>
-                  <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
-                    Provide an evidence photo in the left panel and trigger the diagnostic to generate structured classification parameters.
-                  </p>
-                </div>
-              )}
-            </AnimatePresence>
 
-            {/* SECURE DATABASE LEDGER PREVIEW */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm" id="recent-ledger-panel">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-950 flex items-center gap-2">
-                    <Database className="h-4 w-4 text-indigo-600" />
-                    Firestore Registry Audit
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium">Live issues list committed to the database</p>
-                </div>
-                <button 
-                  onClick={fetchIssues} 
-                  disabled={loadingList}
-                  className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all"
-                  id="btn-refresh-ledger"
-                  title="Refresh Audit"
-                >
-                  <RefreshCw className={`h-4 w-4 ${loadingList ? "animate-spin" : ""}`} />
-                </button>
-              </div>
-
-              {loadingList && savedIssuesList.length === 0 ? (
-                <div className="py-8 text-center text-slate-500 space-y-2" id="ledger-loading">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-500" />
-                  <p className="text-xs font-semibold">Reading Firestore collection index...</p>
-                </div>
-              ) : savedIssuesList.length === 0 ? (
-                <div className="py-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl" id="ledger-empty">
-                  <p className="text-xs text-slate-500 font-semibold">No issues currently committed in database registry.</p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto pr-1" id="ledger-list">
-                  {savedIssuesList.map((item) => {
-                    const displayStatus = (item.status === "reported" || !item.status || item.status.toLowerCase() === "submitted") ? "Submitted" : item.status;
-                    return (
-                      <div 
-                        key={item.id} 
-                        onClick={() => {
-                          setAnalysisResult(item);
-                          setSelectedImage(item.imageUrl);
-                        }}
-                        className="p-4 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-xl transition-all flex gap-4 items-start cursor-pointer hover:shadow-sm"
-                        id={`ledger-item-${item.id}`}
-                      >
-                        {item.imageUrl && (
-                          <img 
-                            src={item.imageUrl} 
-                            alt="Evidence preview" 
-                            className="h-16 w-16 rounded-lg object-cover bg-white border border-slate-200 shrink-0"
-                          />
-                        )}
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getCategoryDetails(item.issueType).color}`}>
-                              {getCategoryDetails(item.issueType).label}
-                            </span>
-                            <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getSeverityStyle(item.severity).bg} ${getSeverityStyle(item.severity).text} ${getSeverityStyle(item.severity).border}`}>
-                              Sev: {item.severity}
-                            </span>
-                            {item.isFallback ? (
-                              <span className="text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded uppercase font-sans">
-                                Fallback Analysis
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded uppercase font-sans">
-                                Gemini Analysis
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="text-xs font-bold text-slate-900 truncate">{item.title}</h4>
-                          <p className="text-[11px] text-slate-600 font-medium line-clamp-1">{item.description}</p>
-                          <p className="text-[10px] text-slate-400 font-mono font-medium">ID: {item.id} • {new Date(item.createdAt).toLocaleString()}</p>
-
-                          {/* SPRINT ACTIONS: Approve, Manual Review, Reject */}
-                          <div className="pt-3 border-t border-slate-200/60 mt-3 flex items-center justify-between gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Status:</span>
-                              <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${
-                                displayStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                displayStatus === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                displayStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                "bg-blue-50 text-blue-700 border-blue-200"
-                              }`}>
-                                {displayStatus === "Manual Review" ? "🟡 Manual Review" : displayStatus}
-                              </span>
-                              {displayStatus === "Manual Review" && item.manualReviewReason && (
-                                <span className="text-[10px] font-extrabold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-lg">
-                                  Reason: "{item.manualReviewReason}"
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateIssueStatus(item.id, "Approved");
-                                }}
-                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
-                                  displayStatus === "Approved"
-                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                    : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
-                                }`}
-                              >
-                                Approve
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setManualReviewTargetId(item.id);
-                                }}
-                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
-                                  displayStatus === "Manual Review"
-                                    ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                                    : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
-                                }`}
-                              >
-                                Manual Review
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateIssueStatus(item.id, "Rejected");
-                                }}
-                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-lg border transition-all cursor-pointer ${
-                                  displayStatus === "Rejected"
-                                    ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                                    : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
-                                }`}
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                  {/* RIGHT SIDE: Waiting Intake + Secure Ledger */}
+                  <div className="lg:col-span-7 space-y-8" id="right-workspace-column">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center shadow-sm" id="empty-analysis-container">
+                      <div className="mx-auto w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4">
+                        <Sparkles className="h-6 w-6" />
                       </div>
-                    );
-                  })}
+                      <h3 className="text-base font-bold text-slate-900">Awaiting Image Intake</h3>
+                      <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
+                        Provide an evidence photo in the left panel and trigger the diagnostic to generate structured classification parameters.
+                      </p>
+                    </div>
+
+                    {renderFirestoreRegistryAudit()}
+                  </div>
                 </div>
-              )}
-            </div>
-
-          </div>
-
-        </div>
-        </>
+              </>
+            )}
+          </>
         )}
-
       </main>
 
       {/* Styled Footer */}
