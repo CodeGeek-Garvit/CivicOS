@@ -929,7 +929,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-extrabold tracking-tight text-slate-950 flex items-center gap-2">
-                CivicOS <span className="text-indigo-600 text-xs font-semibold px-2 py-0.5 bg-indigo-50 border border-indigo-100 rounded-full">Sprint 2 Ready</span>
+                CivicOS
               </h1>
               <p className="text-xs text-slate-500 font-medium">Autonomous Civic Intelligence Platform</p>
             </div>
@@ -1258,8 +1258,9 @@ export default function App() {
                             <div className="grid grid-cols-3 gap-3">
                               <button
                                 disabled={isModerated}
-                                onClick={async () => {
-                                  await handleUpdateIssueStatus(analysisResult.id, "Approved");
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateIssueStatus(analysisResult.id, "Approved");
                                 }}
                                 className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
                                   detailStatus === "Approved"
@@ -1275,7 +1276,8 @@ export default function App() {
 
                               <button
                                 disabled={isModerated}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setManualReviewTargetId(analysisResult.id);
                                 }}
                                 className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
@@ -1292,8 +1294,9 @@ export default function App() {
 
                               <button
                                 disabled={isModerated}
-                                onClick={async () => {
-                                  await handleUpdateIssueStatus(analysisResult.id, "Rejected");
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateIssueStatus(analysisResult.id, "Rejected");
                                 }}
                                 className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
                                   detailStatus === "Rejected"

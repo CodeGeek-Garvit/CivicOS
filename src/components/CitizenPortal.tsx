@@ -1077,46 +1077,43 @@ export default function CitizenPortal({
                       return (
                         <div 
                           key={item.id}
-                          className="bg-white border border-slate-200 rounded-3xl p-5 hover:border-slate-300 hover:shadow-md transition-all flex flex-col md:flex-row gap-5"
+                          className="bg-white border border-slate-200 rounded-3xl p-5 hover:border-slate-300 hover:shadow-md transition-all flex flex-col gap-3 cursor-pointer"
+                          onClick={() => setExpandedReportId(expandedReportId === item.id ? null : item.id)}
                         >
-                          {/* Image preview */}
-                          {item.imageUrl && (
-                            <div className="relative shrink-0 w-full md:w-36 h-36 rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
-                              <img 
-                                src={item.imageUrl} 
-                                alt={item.title} 
-                                className="w-full h-full object-cover"
-                              />
-                              <div className="absolute top-2 left-2 px-2 py-0.5 bg-slate-950/70 backdrop-blur-sm rounded text-[9px] font-bold text-white uppercase tracking-wider flex items-center gap-1">
-                                <MapPin className="h-2.5 w-2.5 text-red-400" />
-                                {distance} away
+                          {/* Summary part (always visible) */}
+                          <div className="flex flex-col gap-3">
+                            <div className="flex flex-col md:flex-row gap-5">
+                              {/* Image preview */}
+                              {item.imageUrl && (
+                                <div className="shrink-0 w-full md:w-36 h-36 rounded-2xl overflow-hidden border border-slate-100 bg-slate-50">
+                                  <img 
+                                    src={item.imageUrl} 
+                                    alt={item.title} 
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+
+                              {/* Details Summary */}
+                              <div className="flex-1 space-y-1.5 min-w-0">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getStatusColor(item.status)}`}>
+                                    {item.status || "Reported"}
+                                  </span>
+                                  <span className="text-[9px] font-extrabold px-2 py-0.5 border border-slate-200 text-slate-600 rounded-full uppercase bg-slate-50">
+                                    {getCategoryBadgeLabel(item.issueType)}
+                                  </span>
+                                  <span className="text-[9px] font-extrabold px-2 py-0.5 border border-red-100 text-red-700 bg-red-50/50 rounded-full uppercase">
+                                    Sev: {item.severity}/10
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-950 truncate">{item.title}</h4>
+                                <p className="text-xs text-slate-500 font-medium line-clamp-2">{item.description}</p>
                               </div>
                             </div>
-                          )}
 
-                          {/* Details */}
-                          <div className="flex-1 space-y-3 min-w-0 flex flex-col justify-between">
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={`text-[9px] font-extrabold px-2 py-0.5 border rounded-full uppercase tracking-wider ${getStatusColor(item.status)}`}>
-                                  {item.status || "Reported"}
-                                </span>
-                                <span className="text-[9px] font-extrabold px-2 py-0.5 border border-slate-200 text-slate-600 rounded-full uppercase bg-slate-50">
-                                  {getCategoryBadgeLabel(item.issueType)}
-                                </span>
-                                <span className="text-[9px] font-extrabold px-2 py-0.5 border border-red-100 text-red-700 bg-red-50/50 rounded-full uppercase">
-                                  Sev: {item.severity}/10
-                                </span>
-                              </div>
-
-                              <h4 className="text-sm font-black text-slate-950 truncate">{item.title}</h4>
-                              <p className="text-xs text-slate-500 font-medium line-clamp-2">{item.description}</p>
-                            </div>
-
-                            {/* Trust Score & Verification Actions */}
-                            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
-                              
-                              {/* Trust metric */}
+                            {/* Trust Score & Voting Controls (Summary) */}
+                            <div className="border-t border-slate-100 pt-3 flex flex-wrap items-center justify-between gap-4">
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-1">
                                   <span className="text-xs font-extrabold text-slate-800">
@@ -1128,50 +1125,79 @@ export default function CitizenPortal({
                                   {trustInfo.label} • <AnimatedCounter value={(item.verifications || 0) + (item.disputes || 0)} /> votes
                                 </span>
                               </div>
-
-                              {/* Action buttons and confirmation messages */}
-                              <div className="flex flex-col items-end gap-1.5">
-                                <div className="flex items-center gap-2">
-                                  {hasVoted ? (
-                                    hasVoted === "verified" ? (
-                                      <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 fill-emerald-100" />
-                                        <span>✓ You verified this issue</span>
-                                      </div>
-                                    ) : (
-                                      <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
-                                        <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
-                                        <span>⚠ You disputed this issue</span>
-                                      </div>
-                                    )
+                              <div className="flex items-center gap-2">
+                                {hasVoted ? (
+                                  hasVoted === "verified" ? (
+                                    <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 fill-emerald-100" />
+                                      <span>✓ Verified</span>
+                                    </div>
                                   ) : (
-                                    <>
-                                      <button
-                                        onClick={() => handleVote(item.id, "verified")}
-                                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                      >
-                                        <ThumbsUp className="h-3.5 w-3.5" />
-                                        <span>Verify</span>
-                                      </button>
-                                      <button
-                                        onClick={() => handleVote(item.id, "disputed")}
-                                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                                      >
-                                        <ThumbsDown className="h-3.5 w-3.5" />
-                                        <span>Dispute</span>
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                                {voteConfirmations[item.id] && (
-                                  <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg animate-pulse mt-1">
-                                    {voteConfirmations[item.id]}
-                                  </span>
+                                    <div className="px-3 py-1.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm">
+                                      <AlertCircle className="h-3.5 w-3.5 text-rose-600" />
+                                      <span>⚠ Disputed</span>
+                                    </div>
+                                  )
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleVote(item.id, "verified"); }}
+                                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ThumbsUp className="h-3.5 w-3.5" />
+                                      <span>Verify</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleVote(item.id, "disputed"); }}
+                                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ThumbsDown className="h-3.5 w-3.5" />
+                                      <span>Dispute</span>
+                                    </button>
+                                  </>
                                 )}
                               </div>
-
+                            </div>
+                            
+                            <div className="text-[10px] text-slate-400 font-bold pt-1">
+                              {expandedReportId === item.id ? "Click to collapse" : "Click to view full details"}
                             </div>
                           </div>
+                          
+                          {/* Expanded area (conditional) */}
+                          <AnimatePresence>
+                            {expandedReportId === item.id && (
+                              <motion.div 
+                                initial={{ height: 0, opacity: 0 }} 
+                                animate={{ height: 'auto', opacity: 1 }} 
+                                exit={{ height: 0, opacity: 0 }}
+                                className="border-t border-slate-100 pt-4 space-y-4"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {/* Expanded Details */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                  <div className="space-y-1">
+                                    <p className="font-bold text-slate-900">AI Description</p>
+                                    <p className="text-slate-600">{item.description}</p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <p className="font-bold text-slate-900">Evidence & Metadata</p>
+                                    <p className="text-slate-600">Created: {new Date(item.createdAt).toLocaleDateString()}</p>
+                                    <p className="text-slate-600">Confidence: {Math.round((item.confidence || 0) * 100)}%</p>
+                                    <p className="text-slate-600">Trust Score: {trustInfo.score}% ({trustInfo.label})</p>
+                                  </div>
+                                </div>
+                                
+                                {voteConfirmations[item.id] && (
+                                  <div className="pt-2">
+                                    <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-lg">
+                                      {voteConfirmations[item.id]}
+                                    </span>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       );
                     })}
