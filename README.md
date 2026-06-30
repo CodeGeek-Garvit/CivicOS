@@ -367,18 +367,21 @@ README.md
 
 ---
 
+---
+
 ## 📨 Automated Dispatch Preview
 
 This is the AI-generated municipal work order preview before dispatch, allowing administrators to review the generated communication prior to approval.
 
 ![Automated Dispatch Preview](Dispatch%20Email.png)
 
+---
+
 ## 📧 Live Gmail Work Order Dispatch
 
 Once approved, CivicOS automatically dispatches an official municipal work order using the Gmail API, complete with issue details, department assignment, SLA, repair estimates, and actionable instructions.
 
 ![Live Gmail Dispatch](email.png)
-
 ---
 
 ## 💰 Cost of Inaction Engine
