@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { 
   Upload, Image as ImageIcon, Loader2, CheckCircle2, 
   AlertCircle, ArrowRight, Sparkles, MapPin, Award, 
@@ -126,6 +126,14 @@ export default function CitizenPortal({
   onUpdateIssueStatus,
   onBackToSelector
 }: CitizenPortalProps) {
+  // Filter issues based on active mode (isLiveMode vs demoMode)
+  const activeIssuesList = useMemo(() => {
+    return issues.filter(i => {
+      const isDemo = i.isDemoMode === true || String(i.id).startsWith("issue_mock_");
+      return isLiveMode ? !isDemo : isDemo;
+    });
+  }, [issues, isLiveMode]);
+
   const [citizenTab, setCitizenTab] = useState<"home" | "nearby" | "my-reports" | "rewards">("home");
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -185,7 +193,7 @@ export default function CitizenPortal({
       unlocked.push("contributor");
     }
     const hasHighSeverityReport = reportedIds.some(id => {
-      const iss = issues.find(i => i.id === id);
+      const iss = activeIssuesList.find(i => i.id === id);
       return iss && (iss.severity || 0) >= 8;
     });
     if (hasHighSeverityReport) {
@@ -198,7 +206,7 @@ export default function CitizenPortal({
   const prevBadgesRef = useRef<string[]>([]);
 
   useEffect(() => {
-    if (issues.length > 0) {
+    if (activeIssuesList.length > 0) {
       const current = getUnlockedBadgeIds(myReportedIds, verifiedList);
       
       if (isFirstLoadRef.current) {
@@ -463,7 +471,7 @@ export default function CitizenPortal({
     // Check if already voted
     if (verifiedList[id]) return;
 
-    const targetIssue = issues.find(i => i.id === id);
+    const targetIssue = activeIssuesList.find(i => i.id === id);
     if (!targetIssue) return;
 
     const currentVerifications = targetIssue.verifications || 0;
@@ -537,8 +545,8 @@ export default function CitizenPortal({
 
   // Compute Trust Score for an issue
   const getCommunityTrustScore = (issue: SavedIssue) => {
-    const v = issue.verifications !== undefined ? issue.verifications : 1;
-    const d = issue.disputes !== undefined ? issue.disputes : 0;
+    const v = typeof issue.verifications === "number" ? issue.verifications : 0;
+    const d = typeof issue.disputes === "number" ? issue.disputes : 0;
     if (v === 0 && d === 0) return { score: 100, label: "Unverified Initial Entry" };
     
     const score = Math.round((v / (v + d)) * 100);
@@ -1050,18 +1058,18 @@ export default function CitizenPortal({
                   </button>
                 </div>
 
-                {isLoading && issues.length === 0 ? (
+                {isLoading && activeIssuesList.length === 0 ? (
                   <div className="py-12 text-center text-slate-500 space-y-2">
                     <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-500" />
                     <p className="text-xs font-semibold">Reading active Firestore entries...</p>
                   </div>
-                ) : issues.length === 0 ? (
+                ) : activeIssuesList.length === 0 ? (
                   <div className="py-12 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
                     <p className="text-xs text-slate-500 font-semibold">No issues registered in your local area yet.</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {issues.map((item) => {
+                    {activeIssuesList.map((item) => {
                       const distance = getDeterministicDistance(item.id);
                       const trustInfo = getCommunityTrustScore(item);
                       const hasVoted = verifiedList[item.id];
@@ -1182,7 +1190,7 @@ export default function CitizenPortal({
                   <p className="text-xs text-slate-500 font-medium">Track the incident resolution stages as they advance dynamically</p>
                 </div>
 
-                {issues.filter(i => myReportedIds.includes(i.id)).length === 0 ? (
+                {activeIssuesList.filter(i => myReportedIds.includes(i.id)).length === 0 ? (
                   <div className="py-12 text-center bg-white border border-dashed border-slate-200 rounded-3xl space-y-3">
                     <Activity className="h-8 w-8 text-slate-400 mx-auto" />
                     <p className="text-xs text-slate-500 font-extrabold">You haven't reported any issues in this session yet.</p>
@@ -1195,7 +1203,7 @@ export default function CitizenPortal({
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {issues.filter(i => myReportedIds.includes(i.id)).map((item) => {
+                    {activeIssuesList.filter(i => myReportedIds.includes(i.id)).map((item) => {
                       const timelineSteps = getTimelineSteps(item.status);
 
                       // Compute expanded 7-stage timeline

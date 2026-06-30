@@ -12,7 +12,7 @@ import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
 import IncidentExecutionCenter from "./components/IncidentExecutionCenter";
 import CommissionerCopilot from "./components/CommissionerCopilot";
 import CitizenPortal from "./components/CitizenPortal";
-import { GeminiAnalysis, SavedIssue } from "./types";
+import { GeminiAnalysis, SavedIssue, enrichIssue } from "./types";
 
 const compressImage = (base64Str: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
   return new Promise((resolve) => {
@@ -57,12 +57,29 @@ export default function App() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisStep, setAnalysisStep] = useState<string>("");
-  const [analysisResult, setAnalysisResult] = useState<GeminiAnalysis | null>(null);
+  const [rawAnalysisResult, setRawAnalysisResult] = useState<GeminiAnalysis | null>(null);
+  const analysisResult = React.useMemo(() => {
+    if (!rawAnalysisResult) return null;
+    const tempIssue: SavedIssue = {
+      id: "temp_analysis",
+      imageUrl: "",
+      status: "Reported",
+      createdAt: new Date().toISOString(),
+      location: { latitude: 18.5204, longitude: 73.8567 },
+      ...rawAnalysisResult
+    };
+    return enrichIssue(tempIssue);
+  }, [rawAnalysisResult]);
+  const setAnalysisResult = setRawAnalysisResult;
   const [error, setError] = useState<string | null>(null);
   
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [savedIssuesList, setSavedIssuesList] = useState<SavedIssue[]>([]);
+  const [rawSavedIssuesList, setRawSavedIssuesList] = useState<SavedIssue[]>([]);
+  const savedIssuesList = React.useMemo(() => {
+    return rawSavedIssuesList.map(item => enrichIssue(item));
+  }, [rawSavedIssuesList]);
+  const setSavedIssuesList = setRawSavedIssuesList;
   const [loadingList, setLoadingList] = useState(false);
   const [activeTab, setActiveTab] = useState<"command-center" | "map" | "execution-center" | "operations" | "reporter" | "copilot">("command-center");
   const [selectedExecutionIssueId, setSelectedExecutionIssueId] = useState<string | null>(null);
@@ -738,8 +755,10 @@ export default function App() {
           /* SPRINT 10 CENTERPIECE: Incident Execution Center view */
           <IncidentExecutionCenter
             issues={savedIssuesList.filter(item => {
+              const isDemo = item.isDemoMode === true || String(item.id).startsWith("issue_mock_");
+              const modeMatches = isLiveMode ? !isDemo : isDemo;
               const statusLower = String(item.status || "").toLowerCase();
-              return statusLower !== "submitted" && statusLower !== "reported" && statusLower !== "rejected" && statusLower !== "manual review";
+              return modeMatches && statusLower !== "submitted" && statusLower !== "reported" && statusLower !== "rejected" && statusLower !== "manual review";
             })}
             selectedIssueId={selectedExecutionIssueId}
             onSelectIssueId={(id) => setSelectedExecutionIssueId(id)}
@@ -763,7 +782,10 @@ export default function App() {
           />
         ) : activeTab === "copilot" ? (
           <CommissionerCopilot 
-            issues={savedIssuesList}
+            issues={savedIssuesList.filter(item => {
+              const isDemo = item.isDemoMode === true || String(item.id).startsWith("issue_mock_");
+              return isLiveMode ? !isDemo : isDemo;
+            })}
             onRefresh={fetchIssues}
             isLoading={loadingList}
             onUpdateIssueStatus={handleUpdateIssueStatus}

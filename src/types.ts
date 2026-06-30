@@ -337,3 +337,262 @@ export interface IAuthorityDashboardConfig {
     wardDistribution: Record<string, number>;
   };
 }
+
+export function clientComputeDeterministicConfidence(category: string, severity: number, hasLowQuality: boolean = false, isNightOrPoorLighting: boolean = false): number {
+  let conf = 0.90; // Base baseline
+
+  const cat = String(category || "").toLowerCase();
+  if (cat.includes("road") || cat.includes("pothole")) {
+    conf += 0.02;
+  } else if (cat.includes("waste") || cat.includes("garbage") || cat.includes("litter")) {
+    conf += 0.02;
+  } else if (cat.includes("light") || cat.includes("electrical")) {
+    conf += 0.01;
+  }
+
+  if (severity >= 8) {
+    conf += 0.01;
+  } else if (severity <= 3) {
+    conf -= 0.02;
+  }
+
+  if (hasLowQuality) {
+    conf -= 0.02;
+  }
+
+  if (isNightOrPoorLighting) {
+    conf -= 0.025;
+  }
+
+  // Clamped tightly between 85% and 96%
+  return Math.min(0.96, Math.max(0.85, Number(conf.toFixed(2))));
+}
+
+export function clientComputeCostOfInaction(
+  issueType: string,
+  affectedAsset: string,
+  damageExtent: string,
+  severity: number,
+  title?: string,
+  description?: string
+) {
+  const type = String(issueType || "").toLowerCase();
+  const asset = String(affectedAsset || "").toLowerCase();
+  const extent = String(damageExtent || "moderate").toLowerCase();
+
+  let subtype = "default_fallback";
+
+  // Match the exact same subtype selection logic as server/engines/costEngine.ts
+  if (type.includes("pothole") || type.includes("hole") || type.includes("asphalt") || type.includes("road") || asset.includes("road") || asset.includes("pothole")) {
+    if (severity <= 4) {
+      subtype = "pothole_minor";
+    } else if (severity <= 7) {
+      subtype = "pothole_major";
+    } else if (severity <= 9) {
+      subtype = "road_surface_damage";
+    } else {
+      subtype = "road_collapse";
+    }
+  } else if (type.includes("footpath") || type.includes("sidewalk") || asset.includes("footpath") || asset.includes("sidewalk") || asset.includes("pavement")) {
+    if (severity <= 4) {
+      subtype = "footpath_crack_minor";
+    } else if (severity <= 7) {
+      subtype = "footpath_crack_major";
+    } else {
+      subtype = "footpath_collapsed";
+    }
+  } else if (type.includes("waste") || type.includes("garbage") || type.includes("litter") || type.includes("bin") || type.includes("overflow") || type.includes("dump") || asset.includes("waste") || asset.includes("bin")) {
+    if (type.includes("litter") || type.includes("single")) {
+      subtype = "litter_single";
+    } else if (type.includes("scattered") || type.includes("litter_scattered")) {
+      subtype = "litter_scattered";
+    } else if (type.includes("overflow") || type.includes("bin_overflow")) {
+      subtype = "waste_bin_overflow";
+    } else if (type.includes("hazardous") || type.includes("hazard")) {
+      subtype = "hazardous_waste";
+    } else if (severity >= 7) {
+      subtype = "illegal_dumping_large";
+    } else {
+      subtype = "illegal_dumping_small";
+    }
+  } else if (type.includes("water") || type.includes("leak") || type.includes("pipe") || type.includes("burst") || type.includes("flow") || type.includes("drain") || type.includes("clog") || asset.includes("water") || asset.includes("pipe") || asset.includes("drain") || asset.includes("sewer")) {
+    if (type.includes("drain") || type.includes("clog") || type.includes("drainage") || asset.includes("drain") || asset.includes("sewer")) {
+      subtype = "drainage_blocked";
+    } else if (type.includes("burst") || type.includes("main") || severity >= 9) {
+      subtype = "water_main_burst";
+    } else if (severity >= 5 || extent === "severe") {
+      subtype = "water_leakage_major";
+    } else {
+      subtype = "water_leakage_minor";
+    }
+  } else if (type.includes("light") || type.includes("lamp") || type.includes("street_light") || type.includes("streetlight") || type.includes("bulb") || type.includes("electrical") || type.includes("wire") || type.includes("exposed") || asset.includes("light") || asset.includes("electrical") || asset.includes("wire") || asset.includes("pole")) {
+    if (type.includes("light") || type.includes("lamp") || asset.includes("light") || asset.includes("pole")) {
+      if (severity <= 4) {
+        subtype = "streetlight_outage";
+      } else {
+        subtype = "streetlight_damaged";
+      }
+    } else {
+      if (severity >= 7) {
+        subtype = "electrical_exposed";
+      } else {
+        subtype = "electrical_hazard";
+      }
+    }
+  } else if (type.includes("wall") || type.includes("building") || asset.includes("wall") || asset.includes("building") || type.includes("structure") || asset.includes("structure") || type.includes("crack")) {
+    if (severity >= 8 || type.includes("hazard") || type.includes("building")) {
+      subtype = "building_hazard";
+    } else if (severity <= 4) {
+      subtype = "wall_crack_minor";
+    } else {
+      subtype = "wall_crack_major";
+    }
+  }
+
+  const SUBTYPE_RANGES_CLIENT: Record<string, { min: number, max: number, category: string }> = {
+    litter_single: { min: 400, max: 1000, category: "waste_bin" },
+    litter_scattered: { min: 1000, max: 2000, category: "waste_bin" },
+    waste_bin_overflow: { min: 1500, max: 2500, category: "waste_bin" },
+    illegal_dumping_small: { min: 2500, max: 4000, category: "waste_bin" },
+    illegal_dumping_large: { min: 4000, max: 6000, category: "waste_bin" },
+    hazardous_waste: { min: 6000, max: 12000, category: "waste_bin" },
+    pothole_minor: { min: 5000, max: 7000, category: "road" },
+    pothole_major: { min: 7000, max: 10000, category: "road" },
+    road_surface_damage: { min: 8000, max: 15000, category: "road" },
+    road_collapse: { min: 20000, max: 45000, category: "road" },
+    footpath_crack_minor: { min: 2000, max: 3500, category: "footpath" },
+    footpath_crack_major: { min: 3500, max: 5000, category: "footpath" },
+    footpath_collapsed: { min: 5000, max: 8000, category: "footpath" },
+    water_leakage_minor: { min: 4000, max: 6000, category: "water_pipe" },
+    water_leakage_major: { min: 6000, max: 9000, category: "water_pipe" },
+    water_main_burst: { min: 10000, max: 25000, category: "water_pipe" },
+    drainage_blocked: { min: 3000, max: 8000, category: "drainage" },
+    streetlight_outage: { min: 2000, max: 3500, category: "streetlight" },
+    streetlight_damaged: { min: 3500, max: 5000, category: "streetlight" },
+    electrical_hazard: { min: 6000, max: 12000, category: "electrical" },
+    electrical_exposed: { min: 10000, max: 20000, category: "electrical" },
+    wall_crack_minor: { min: 4000, max: 8000, category: "structural" },
+    wall_crack_major: { min: 8000, max: 18000, category: "structural" },
+    building_hazard: { min: 20000, max: 50000, category: "structural" },
+    default_fallback: { min: 4000, max: 8000, category: "road" }
+  };
+
+  const range = SUBTYPE_RANGES_CLIENT[subtype] || SUBTYPE_RANGES_CLIENT.default_fallback;
+  const category = range.category;
+
+  const interpolationFactor = Math.min(1.0, Math.max(0.0, severity / 10));
+  const baseCost = range.min + (range.max - range.min) * interpolationFactor;
+  const repairCostNow = Math.round(baseCost / 100) * 100;
+
+  let decay30 = 1.20;
+  let decay90 = 1.45;
+
+  if (category === "streetlight") {
+    decay30 = 1.15;
+    decay90 = 1.30;
+  } else if (category === "electrical") {
+    decay30 = 1.20;
+    decay90 = 1.45;
+  } else if (category === "road") {
+    decay30 = 1.25;
+    decay90 = 1.55;
+  } else if (category === "water_pipe") {
+    decay30 = 1.20;
+    decay90 = 1.50;
+  } else if (category === "footpath") {
+    decay30 = 1.15;
+    decay90 = 1.40;
+  } else if (category === "waste_bin") {
+    decay30 = 1.15;
+    decay90 = 1.35;
+  } else if (category === "drainage") {
+    decay30 = 1.25;
+    decay90 = 1.60;
+  }
+
+  const repairCost30Days = Math.round((repairCostNow * decay30) / 100) * 100;
+  const repairCost90Days = Math.round((repairCostNow * decay90) / 100) * 100;
+
+  const costIncrease30 = Math.round(((repairCost30Days - repairCostNow) / repairCostNow) * 100) || 0;
+  const costIncrease90 = Math.round(((repairCost90Days - repairCostNow) / repairCostNow) * 100) || 0;
+
+  let riskEscalation: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "MEDIUM";
+  if (severity >= 9) riskEscalation = "CRITICAL";
+  else if (severity >= 7) riskEscalation = "HIGH";
+  else if (severity >= 4) riskEscalation = "MEDIUM";
+  else riskEscalation = "LOW";
+
+  let minCitizens = 100;
+  let maxCitizens = 800;
+  if (category === "streetlight") {
+    minCitizens = 40; maxCitizens = 120;
+  } else if (category === "road") {
+    minCitizens = 300; maxCitizens = 2000;
+  } else if (category === "footpath") {
+    minCitizens = 120; maxCitizens = 500;
+  } else if (category === "waste_bin") {
+    minCitizens = 150; maxCitizens = 600;
+  } else if (category === "water_pipe") {
+    minCitizens = 250; maxCitizens = 1200;
+  } else if (category === "drainage") {
+    minCitizens = 300; maxCitizens = 1500;
+  }
+
+  const severityFactor = Math.min(1.0, Math.max(0.0, (severity - 1) / 9));
+  const rawCitizens = minCitizens + (maxCitizens - minCitizens) * severityFactor;
+  const estimatedCitizensAffected = Math.round(rawCitizens / 10) * 10;
+
+  let environmentalImpact: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" = "LOW";
+  if (category === "waste_bin" || category === "drainage") {
+    environmentalImpact = severity >= 8 ? "CRITICAL" : severity >= 5 ? "HIGH" : "MEDIUM";
+  } else if (category === "water_pipe") {
+    environmentalImpact = severity >= 8 ? "HIGH" : "MEDIUM";
+  } else {
+    environmentalImpact = severity >= 8 ? "MEDIUM" : "LOW";
+  }
+
+  return {
+    repairCostNow,
+    repairCost30Days,
+    repairCost90Days,
+    costIncrease30,
+    costIncrease90,
+    riskEscalation,
+    estimatedCitizensAffected,
+    environmentalImpact,
+    recommendedAction: `Schedule rehabilitation work order immediately within SLA timeline to mitigate progressive civil deterioration.`,
+    rationale: `Sub-base water saturation or progressive structural/material cracking represents an escalating financial liability.`
+  };
+}
+
+export function enrichIssue(issue: SavedIssue): SavedIssue {
+  if (!issue) return issue;
+
+  const category = issue.affectedAsset || issue.issueType || "other";
+  const severity = Number(issue.severity || 5);
+
+  const isNightOrPoorLighting = String(issue.description || "").toLowerCase().includes("night") || String(issue.description || "").toLowerCase().includes("dark");
+  const hasLowQuality = String(issue.description || "").toLowerCase().includes("blur") || String(issue.description || "").toLowerCase().includes("grainy");
+  const confidence = clientComputeDeterministicConfidence(category, severity, hasLowQuality, isNightOrPoorLighting);
+
+  const extentLabel = severity >= 8 ? "Severe" : severity >= 5 ? "Moderate" : "Minor";
+  const costOfInactionData = clientComputeCostOfInaction(
+    issue.issueType || "",
+    issue.affectedAsset || "",
+    extentLabel,
+    severity,
+    issue.title,
+    issue.description
+  );
+
+  return {
+    ...issue,
+    confidence: confidence,
+    costOfInaction: {
+      ...costOfInactionData,
+      assetLabel: issue.affectedAsset || "Municipal Asset",
+      extentLabel: extentLabel,
+      baseCost: costOfInactionData.repairCostNow,
+    }
+  };
+}

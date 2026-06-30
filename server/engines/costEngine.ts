@@ -47,43 +47,43 @@ interface Range {
 
 const SUBTYPE_RANGES: Record<string, Range> = {
   // WASTE
-  litter_single: { min: 200, max: 600, category: "waste_bin" },
-  litter_scattered: { min: 500, max: 1500, category: "waste_bin" },
-  waste_bin_overflow: { min: 1500, max: 4000, category: "waste_bin" },
-  illegal_dumping_small: { min: 3000, max: 7000, category: "waste_bin" },
-  illegal_dumping_large: { min: 8000, max: 18000, category: "waste_bin" },
-  hazardous_waste: { min: 20000, max: 60000, category: "waste_bin" },
+  litter_single: { min: 400, max: 1000, category: "waste_bin" },
+  litter_scattered: { min: 1000, max: 2000, category: "waste_bin" },
+  waste_bin_overflow: { min: 1500, max: 2500, category: "waste_bin" },
+  illegal_dumping_small: { min: 2500, max: 4000, category: "waste_bin" },
+  illegal_dumping_large: { min: 4000, max: 6000, category: "waste_bin" },
+  hazardous_waste: { min: 6000, max: 12000, category: "waste_bin" },
 
   // ROAD
-  pothole_minor: { min: 1500, max: 4000, category: "road" },
-  pothole_major: { min: 6000, max: 15000, category: "road" },
-  road_surface_damage: { min: 8000, max: 20000, category: "road" },
-  road_collapse: { min: 35000, max: 90000, category: "road" },
+  pothole_minor: { min: 5000, max: 7000, category: "road" },
+  pothole_major: { min: 7000, max: 10000, category: "road" },
+  road_surface_damage: { min: 8000, max: 15000, category: "road" },
+  road_collapse: { min: 20000, max: 45000, category: "road" },
 
   // FOOTPATH
-  footpath_crack_minor: { min: 800, max: 2500, category: "footpath" },
-  footpath_crack_major: { min: 3000, max: 8000, category: "footpath" },
-  footpath_collapsed: { min: 8000, max: 20000, category: "footpath" },
+  footpath_crack_minor: { min: 2000, max: 3500, category: "footpath" },
+  footpath_crack_major: { min: 3500, max: 5000, category: "footpath" },
+  footpath_collapsed: { min: 5000, max: 8000, category: "footpath" },
 
   // WATER
-  water_leakage_minor: { min: 2500, max: 6000, category: "water_pipe" },
-  water_leakage_major: { min: 10000, max: 25000, category: "water_pipe" },
-  water_main_burst: { min: 40000, max: 100000, category: "water_pipe" },
+  water_leakage_minor: { min: 4000, max: 6000, category: "water_pipe" },
+  water_leakage_major: { min: 6000, max: 9000, category: "water_pipe" },
+  water_main_burst: { min: 10000, max: 25000, category: "water_pipe" },
   drainage_blocked: { min: 3000, max: 8000, category: "drainage" },
 
   // ELECTRICAL
-  streetlight_outage: { min: 1500, max: 4000, category: "streetlight" },
-  streetlight_damaged: { min: 4000, max: 10000, category: "streetlight" },
-  electrical_hazard: { min: 15000, max: 40000, category: "electrical" },
-  electrical_exposed: { min: 25000, max: 60000, category: "electrical" },
+  streetlight_outage: { min: 2000, max: 3500, category: "streetlight" },
+  streetlight_damaged: { min: 3500, max: 5000, category: "streetlight" },
+  electrical_hazard: { min: 6000, max: 12000, category: "electrical" },
+  electrical_exposed: { min: 10000, max: 20000, category: "electrical" },
 
   // STRUCTURAL
-  wall_crack_minor: { min: 2000, max: 5000, category: "road" },
-  wall_crack_major: { min: 10000, max: 30000, category: "road" },
-  building_hazard: { min: 50000, max: 150000, category: "road" },
+  wall_crack_minor: { min: 4000, max: 8000, category: "structural" },
+  wall_crack_major: { min: 8000, max: 18000, category: "structural" },
+  building_hazard: { min: 20000, max: 50000, category: "structural" },
 
   // DEFAULT FALLBACK
-  default_fallback: { min: 3000, max: 8000, category: "road" }
+  default_fallback: { min: 4000, max: 8000, category: "road" }
 };
 
 export function computeCostOfInaction(issue: CostInput): CostOfInactionResult {
@@ -310,15 +310,15 @@ export function computeCostOfInaction(issue: CostInput): CostOfInactionResult {
 
   // Sanity Cap Checks
   const severityCap: Record<number, number> = {
-    1: 1000,
-    2: 3000,
+    1: 2000,
+    2: 4000,
     3: 6000,
     4: 10000,
     5: 18000
   };
 
-  const exemptAssets = ["water_pipe", "electrical", "structural"];
-  const assetExempt = exemptAssets.includes(asset) || asset.includes("water") || asset.includes("electrical") || asset.includes("structural") || asset.includes("pipe");
+  const exemptAssets = ["water_pipe", "electrical", "structural", "road", "streetlight"];
+  const assetExempt = exemptAssets.includes(asset) || asset.includes("water") || asset.includes("electrical") || asset.includes("structural") || asset.includes("pipe") || asset.includes("road") || asset.includes("streetlight");
 
   let finalRepairCostNow = repairCostNow;
   const cap = severityCap[severity];
@@ -329,30 +329,30 @@ export function computeCostOfInaction(issue: CostInput): CostOfInactionResult {
   const rawCostNowCapped = finalRepairCostNow;
 
   // Deterioration Multipliers
-  let decay30 = 2.1;
-  let decay90 = 5.8;
+  let decay30 = 1.20;
+  let decay90 = 1.45;
 
   if (category === "streetlight") {
-    decay30 = 1.3;
-    decay90 = 2.8;
+    decay30 = 1.15;
+    decay90 = 1.30;
   } else if (category === "electrical") {
-    decay30 = 1.8;
-    decay90 = 4.2;
+    decay30 = 1.20;
+    decay90 = 1.45;
   } else if (category === "road") {
-    decay30 = 2.1;
-    decay90 = 5.8;
+    decay30 = 1.25;
+    decay90 = 1.55;
   } else if (category === "water_pipe") {
-    decay30 = 3.2;
-    decay90 = 9.1;
+    decay30 = 1.20;
+    decay90 = 1.50;
   } else if (category === "footpath") {
-    decay30 = 1.9;
-    decay90 = 4.6;
+    decay30 = 1.15;
+    decay90 = 1.40;
   } else if (category === "waste_bin") {
-    decay30 = 2.8;
-    decay90 = 6.5;
+    decay30 = 1.15;
+    decay90 = 1.35;
   } else if (category === "drainage") {
-    decay30 = 2.6;
-    decay90 = 7.2;
+    decay30 = 1.25;
+    decay90 = 1.60;
   }
 
   const repairCost30Days = Math.round((rawCostNowCapped * decay30) / 100) * 100;

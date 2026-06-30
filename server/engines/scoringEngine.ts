@@ -300,121 +300,48 @@ export function computeDeterministicConfidence(perceptionData: ConfidenceInput):
 
   const rawConf = perceptionData.geminiConfidenceRaw !== undefined ? perceptionData.geminiConfidenceRaw : 0.85;
 
-  // Compute a continuous, natural variation factor (from 0.0 to 1.0) based on all visual parameters
-  let score = 0;
-  let maxScore = 0;
+  // Vary confidence deterministically between 85% and 96%
+  let conf = 0.90; // Base baseline
 
-  if (perceptionData.imageQuality === "high") { score += 3; }
-  else if (perceptionData.imageQuality === "medium") { score += 2; }
-  else { score += 1.5; } // Default / low
-  maxScore += 3;
-
-  if (perceptionData.lightingCondition === "good") { score += 3; }
-  else if (perceptionData.lightingCondition === "poor_lighting") { score += 1.5; }
-  else { score += 1; }
-  maxScore += 3;
-
-  if (perceptionData.visibility === "fully_visible") { score += 3; }
-  else if (perceptionData.visibility === "partially_occluded") { score += 2; }
-  else { score += 1; }
-  maxScore += 3;
-
-  if (perceptionData.motionBlur !== true) { score += 2; }
-  maxScore += 2;
-
-  if (perceptionData.complexScene !== true) { score += 2; }
-  maxScore += 2;
-
-  if (perceptionData.multipleIssuesDetected !== true) { score += 2; }
-  maxScore += 2;
-
-  if (perceptionData.cameraAngle === "optimal") { score += 3; }
-  else if (perceptionData.cameraAngle === "wide_angle") { score += 2.5; }
-  else if (perceptionData.cameraAngle === "steep_angle") { score += 2; }
-  else { score += 1; }
-  maxScore += 3;
-
-  if (perceptionData.estimatedScale === "massive" || perceptionData.estimatedScale === "large" || perceptionData.estimatedScale === "medium") {
-    score += 2;
-  } else if (perceptionData.estimatedScale === "small") {
-    score += 1.5;
-  } else {
-    score += 1;
-  }
-  maxScore += 2;
-
-  score += rawConf * 5;
-  maxScore += 5;
-
-  const variationFactor = score / maxScore; // continuous value roughly between 0.1 and 1.0
-
-  // Classify into specific confidence target ranges
-  let category = "";
-  let minRange = 0.55;
-  let maxRange = 0.70;
-
-  const isPoorLightingOrBlurOrPartialVisibility =
-    perceptionData.lightingCondition === "poor_lighting" ||
-    perceptionData.lightingCondition === "night" ||
-    perceptionData.motionBlur === true ||
-    perceptionData.visibility === "poor_visibility" ||
-    perceptionData.visibility === "partially_occluded" ||
-    perceptionData.imageQuality === "low";
-
-  const isModerateAmbiguity =
-    perceptionData.complexScene === true ||
-    perceptionData.multipleIssuesDetected === true ||
-    perceptionData.cameraAngle === "obstructed_angle" ||
-    perceptionData.cameraAngle === "steep_angle" ||
-    perceptionData.estimatedScale === "tiny" ||
-    rawConf < 0.75;
-
-  const isExceptionallyClearCloseUpUnambiguous =
-    perceptionData.imageQuality === "high" &&
-    perceptionData.visibility === "fully_visible" &&
-    perceptionData.lightingCondition === "good" &&
-    perceptionData.cameraAngle === "optimal" &&
-    perceptionData.motionBlur !== true &&
-    perceptionData.complexScene !== true &&
-    perceptionData.multipleIssuesDetected !== true &&
-    perceptionData.estimatedScale !== "tiny" &&
-    rawConf >= 0.94;
-
-  const isClearButOrdinary =
-    perceptionData.imageQuality === "medium" ||
-    rawConf < 0.88;
-
-  if (isPoorLightingOrBlurOrPartialVisibility) {
-    category = "Poor lighting / blur / partial visibility (55-70%)";
-    minRange = 0.55;
-    maxRange = 0.70;
-  } else if (isModerateAmbiguity) {
-    category = "Moderate ambiguity (65-80%)";
-    minRange = 0.65;
-    maxRange = 0.80;
-  } else if (isExceptionallyClearCloseUpUnambiguous) {
-    category = "Exceptionally clear, close-up, unambiguous (91-95%)";
-    minRange = 0.91;
-    maxRange = 0.95;
-  } else if (isClearButOrdinary) {
-    category = "Clear but ordinary image (75-85%)";
-    minRange = 0.75;
-    maxRange = 0.85;
-  } else {
-    // Very clear image (80-90%)
-    category = "Very clear image (80-90%)";
-    minRange = 0.80;
-    maxRange = 0.90;
+  // 1. Evidence Quality / Image Quality
+  const quality = String(perceptionData.imageQuality || "high").toLowerCase();
+  if (quality === "high") {
+    conf += 0.015;
+  } else if (quality === "low") {
+    conf -= 0.02;
   }
 
-  // Calculate final interpolated confidence score
-  const finalConfidence = minRange + (maxRange - minRange) * variationFactor;
+  // 2. Lighting Condition
+  const lighting = String(perceptionData.lightingCondition || "good").toLowerCase();
+  if (lighting === "good") {
+    conf += 0.015;
+  } else if (lighting === "poor_lighting" || lighting === "night" || lighting === "poor") {
+    conf -= 0.025;
+  }
 
-  // Round to 2 decimal places (so e.g. 0.84)
-  const roundedConfidence = Number(finalConfidence.toFixed(2));
+  // 3. Visibility / Occlusion
+  const visibility = String(perceptionData.visibility || "fully_visible").toLowerCase();
+  if (visibility === "fully_visible") {
+    conf += 0.01;
+  } else if (visibility === "partially_occluded" || visibility === "poor_visibility") {
+    conf -= 0.015;
+  }
 
-  console.log(`- Detected Category: ${category}`);
-  console.log(`- Computed Variation Factor: ${variationFactor.toFixed(3)}`);
+  // 4. Motion Blur and Complex Scene
+  if (perceptionData.motionBlur === true) {
+    conf -= 0.01;
+  }
+  if (perceptionData.complexScene === true) {
+    conf -= 0.01;
+  }
+
+  // 5. Raw Gemini confidence contribution
+  const rawConfOffset = (rawConf - 0.8) * 0.05; // deterministic tiny fine-tuning
+  conf += rawConfOffset;
+
+  // Round and clamp strictly between 85% and 96%
+  const roundedConfidence = Math.min(0.96, Math.max(0.85, Number(conf.toFixed(2))));
+
   console.log(`- Raw Gemini Confidence: ${rawConf.toFixed(2)}`);
   console.log(`- Final Calibrated Confidence: ${roundedConfidence}`);
   console.log("🔒 --------------------------------------------------\n");
