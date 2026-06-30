@@ -7,7 +7,9 @@ import {
   Info, ChevronDown, Mail, FileSpreadsheet, ChevronRight, Brain, ClipboardCheck, User
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import StartupIntro from "./components/StartupIntro";
 import MapDashboard from "./components/MapDashboard";
+
 import ExecutiveCommandCenter from "./components/ExecutiveCommandCenter";
 import IncidentExecutionCenter from "./components/IncidentExecutionCenter";
 import CommissionerCopilot from "./components/CommissionerCopilot";
@@ -84,6 +86,8 @@ export default function App() {
   const [loadingList, setLoadingList] = useState(false);
   const [activeTab, setActiveTab] = useState<"command-center" | "map" | "execution-center" | "operations" | "reporter" | "copilot">("command-center");
   const [selectedExecutionIssueId, setSelectedExecutionIssueId] = useState<string | null>(null);
+
+  const [showIntro, setShowIntro] = useState(() => !sessionStorage.getItem("civicos_intro_played"));
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -919,7 +923,16 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" id="civicos-root">
+    <>
+      {showIntro && (
+        <StartupIntro
+          onComplete={() => {
+            sessionStorage.setItem("civicos_intro_played", "true");
+            setShowIntro(false);
+          }}
+        />
+      )}
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans" id="civicos-root">
       {/* Sleek Navigation Bar */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/80 px-6 py-4" id="header-container">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -2160,6 +2173,7 @@ It is intended solely for authorized contractors and departmental officers.
         )}
       </AnimatePresence>
     </div>
+    </>
   );
 }
 
