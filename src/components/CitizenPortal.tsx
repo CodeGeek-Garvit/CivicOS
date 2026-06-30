@@ -1210,7 +1210,10 @@ export default function CitizenPortal({
                       const s = String(item.status || "").toLowerCase();
                       const isSubmitted = true;
                       const isAiAnalyzed = true;
-                      const isCommunityVerified = s.includes("verified") || s.includes("approved") || s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed") || (item.verifications && item.verifications > 1);
+                      const v = item.verifications || 0;
+                      const d = item.disputes || 0;
+                      const trustScore = v === 0 && d === 0 ? 100 : (v / (v + d)) * 100;
+                      const isCommunityVerified = s.includes("verified") || s.includes("approved") || s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed") || (v >= 3 && trustScore >= 85);
                       const isApproved = s.includes("approved") || s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");
                       const isAssigned = s.includes("assigned") || s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");
                       const isDispatched = s.includes("dispatched") || s.includes("progress") || s.includes("wip") || s.includes("inspection") || s.includes("resolved") || s.includes("closed");

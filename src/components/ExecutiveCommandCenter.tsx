@@ -89,13 +89,13 @@ export default function ExecutiveCommandCenter({
     const totalCount = activeIssuesList.length;
     const resolvedCount = activeIssuesList.filter(i => {
       const s = String(i.status || "").toLowerCase();
-      return s === "resolved" || s === "closed";
+      return s === "resolved" || s === "closed" || s === "rejected";
     }).length;
     
     const unresolvedCount = totalCount - resolvedCount;
     const criticalUnresolved = activeIssuesList.filter(i => {
       const s = String(i.status || "").toLowerCase();
-      return (i.severity || 0) >= 8 && s !== "resolved" && s !== "closed";
+      return (i.severity || 0) >= 8 && s !== "resolved" && s !== "closed" && s !== "rejected";
     }).length;
     
     const resolvedPercentage = totalCount > 0 ? (resolvedCount / totalCount) * 100 : 100;
@@ -407,13 +407,20 @@ export default function ExecutiveCommandCenter({
 
   const communityIntelligence = useMemo(() => {
     const communityVerified = activeIssuesList.filter(i => {
-      const s = String(i.status || "").toLowerCase();
-      return s === "verified" || (i.verifications && i.verifications > 1);
+      const v = i.verifications || 0;
+      const d = i.disputes || 0;
+      const trustScore = v === 0 && d === 0 ? 100 : (v / (v + d)) * 100;
+      return v >= 3 && trustScore >= 85;
     }).length;
 
     const awaitingValidation = activeIssuesList.filter(i => {
       const s = String(i.status || "").toLowerCase();
-      return (s === "submitted" || s === "reported") && (!i.verifications || i.verifications <= 1);
+      const isReported = s === "submitted" || s === "reported" || s === "manual review";
+      const v = i.verifications || 0;
+      const d = i.disputes || 0;
+      const trustScore = v === 0 && d === 0 ? 100 : (v / (v + d)) * 100;
+      const meetsThreshold = v >= 3 && trustScore >= 85;
+      return isReported && !meetsThreshold;
     }).length;
 
     const totalVerifications = activeIssuesList.reduce((sum, i) => sum + (i.verifications || 0), 0);
@@ -855,6 +862,49 @@ export default function ExecutiveCommandCenter({
                 ))
               )}
             </ul>
+          </div>
+
+          {/* Infrastructure Health Breakdown */}
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+              <Building className="h-3.5 w-3.5 text-slate-400" />
+              Infrastructure Health Breakdown
+            </span>
+            <div className="space-y-2.5">
+              {decisionData.departmentPriorities.map((dept, idx) => {
+                const healthScore = dept.activeCount === 0 
+                  ? 100 
+                  : Math.max(30, 100 - (dept.activeCount * 8) - (dept.criticalCount * 12));
+                
+                let healthColor = "bg-emerald-500";
+                let textHealthColor = "text-emerald-600";
+                if (healthScore < 50) {
+                  healthColor = "bg-rose-500";
+                  textHealthColor = "text-rose-600";
+                } else if (healthScore < 80) {
+                  healthColor = "bg-amber-500";
+                  textHealthColor = "text-amber-500";
+                } else if (healthScore < 100) {
+                  healthColor = "bg-teal-500";
+                  textHealthColor = "text-teal-600";
+                }
+
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-700">
+                      <span className="truncate max-w-[160px]">{dept.departmentName}</span>
+                      <span className={`${textHealthColor} font-black`}>{healthScore}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${healthColor} rounded-full transition-all duration-500`}
+                        style={{ width: `${healthScore}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -1366,7 +1416,7 @@ export default function ExecutiveCommandCenter({
             { label: "Departments Active", val: executionStats.activeDepartmentsCount, unit: "dept working" },
             { label: "Crews Active", val: executionStats.activeCrews, unit: "on-site/en-route" },
             { label: "Inspections Pending", val: executionStats.inspectionsPending, unit: "pending audit" },
-            { label: "Confirmations Awaiting", val: executionStats.awaitingConfirmation, unit: "resolved" }
+            { label: "Final Closure Queue", val: executionStats.awaitingConfirmation, unit: "resolved" }
           ].map((stat, i) => (
             <div key={i} className="bg-slate-950/40 border border-slate-800 p-3 rounded-xl flex flex-col justify-between gap-1 shadow-inner">
               <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider leading-tight block">{stat.label}</span>
