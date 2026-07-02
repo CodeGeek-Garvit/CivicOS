@@ -339,12 +339,11 @@ server/
 firebase/
 docs/
 README.md
-```
-
+---
 
 # Author
 
-Garvit Sharma
+**Garvit Sharma**
 
 B.Tech Computer Science & Engineering
 
@@ -354,8 +353,10 @@ Bharati Vidyapeeth College of Engineering, Pune
 
 ## Built for
 
-Google Agentic AI Day Hackathon 2026
+**Vibe2Ship Hackathon 2026**
 
-Community Hero – Hyperlocal Problem Solver
+Problem Statement: **Community Hero – Hyperlocal Problem Solver**
+
+Leveraging Google Gemini, Google Maps Platform, Cloud Firestore, and Google Cloud technologies.
 
 ---
