@@ -96,7 +96,7 @@ Independent intelligence engines compute:
 - Repair Cost
 - Operational Score
 
-No operational decisions are delegated to the LLM.
+Operational decisions are intentionally handled by deterministic intelligence engines rather than the LLM to ensure explainability, consistency, and administrative trust.
 
 ---
 
@@ -331,15 +331,6 @@ This architecture minimizes hallucinations while maintaining explainability.
 ---
 
 
-# Repository Structure
-
-```
-client/
-server/
-firebase/
-docs/
-README.md
----
 
 # Author
 
