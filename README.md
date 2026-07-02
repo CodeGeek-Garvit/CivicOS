@@ -164,39 +164,80 @@ Includes
 
 # Screenshots
 
-## Executive Command Center
+## 🏛️ System Architecture
 
-![Dashboard](docs/executive-dashboard.png)
-
----
-
-## AI Autonomous Intake Hub
-
-![Intake](docs/intake-hub.png)
+![System Architecture](civicos1.png)
 
 ---
 
-## Geographic Intelligence
+## 🔄 Decision Pipeline
 
-![GIS](docs/gis-map.png)
-
----
-
-## Incident Execution Center
-
-![Execution](docs/execution-center.png)
+![Decision Pipeline](civicos2.png)
 
 ---
 
-## Commissioner Copilot
+## 🖥️ Executive Command Center
 
-![Copilot](docs/commissioner-copilot.png)
+![Executive Command Center](Executive%20Command%20Center.png)
 
 ---
 
-## Citizen Portal
+## 🤖 AI Vision Analysis
 
-![Citizen](docs/citizen-portal.png)
+![AI Vision Analysis](AI%20Vision%20Analysis.png)
+
+---
+
+## 📊 Executive Dashboard & Decision Timeline
+
+![Executive Dashboard](Executive%20Dashboard%20%26%20Decision%20Timeline.png)
+
+---
+
+## 🌍 Operations Advisor
+
+![Operations Advisor](Operations%20Advisor.png)
+
+---
+
+## 🧠 Commissioner Copilot
+
+![Commissioner Copilot](Commissioner%20Copilot.png)
+
+---
+
+## 🚨 Incident Execution Center
+
+![Incident Execution Center](Incident%20Execution%20Center.png)
+
+---
+
+---
+
+## 📨 Automated Dispatch Preview
+
+This is the AI-generated municipal work order preview before dispatch, allowing administrators to review the generated communication prior to approval.
+
+![Automated Dispatch Preview](Dispatch%20Email.png)
+
+---
+
+## 📧 Live Gmail Work Order Dispatch
+
+Once approved, CivicOS automatically dispatches an official municipal work order using the Gmail API, complete with issue details, department assignment, SLA, repair estimates, and actionable instructions.
+
+![Live Gmail Dispatch](email.png)
+---
+
+## 💰 Cost of Inaction Engine
+
+![Cost of Inaction](Cost%20of%20Inaction.png)
+
+---
+
+## 👥 Nearby Citizen Verification
+
+![Nearby Verification](Nearby%20Verification.png)
 
 ---
 
@@ -317,84 +358,7 @@ README.md
 ```
 
 ---
-# Screenshots
 
-## 🏛️ System Architecture
-
-![System Architecture](civicos1.png)
-
----
-
-## 🔄 Decision Pipeline
-
-![Decision Pipeline](civicos2.png)
-
----
-
-## 🖥️ Executive Command Center
-
-![Executive Command Center](Executive%20Command%20Center.png)
-
----
-
-## 🤖 AI Vision Analysis
-
-![AI Vision Analysis](AI%20Vision%20Analysis.png)
-
----
-
-## 📊 Executive Dashboard & Decision Timeline
-
-![Executive Dashboard](Executive%20Dashboard%20%26%20Decision%20Timeline.png)
-
----
-
-## 🌍 Operations Advisor
-
-![Operations Advisor](Operations%20Advisor.png)
-
----
-
-## 🧠 Commissioner Copilot
-
-![Commissioner Copilot](Commissioner%20Copilot.png)
-
----
-
-## 🚨 Incident Execution Center
-
-![Incident Execution Center](Incident%20Execution%20Center.png)
-
----
-
----
-
-## 📨 Automated Dispatch Preview
-
-This is the AI-generated municipal work order preview before dispatch, allowing administrators to review the generated communication prior to approval.
-
-![Automated Dispatch Preview](Dispatch%20Email.png)
-
----
-
-## 📧 Live Gmail Work Order Dispatch
-
-Once approved, CivicOS automatically dispatches an official municipal work order using the Gmail API, complete with issue details, department assignment, SLA, repair estimates, and actionable instructions.
-
-![Live Gmail Dispatch](email.png)
----
-
-## 💰 Cost of Inaction Engine
-
-![Cost of Inaction](Cost%20of%20Inaction.png)
-
----
-
-## 👥 Nearby Citizen Verification
-
-![Nearby Verification](Nearby%20Verification.png)
-
----
 
 # Technical Architecture
 # Author
