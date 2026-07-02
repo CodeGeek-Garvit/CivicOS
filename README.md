@@ -164,17 +164,6 @@ Includes
 
 # Screenshots
 
-## 🏛️ System Architecture
-
-![System Architecture](civicos1.png)
-
----
-
-## 🔄 Decision Pipeline
-
-![Decision Pipeline](civicos2.png)
-
----
 
 ## 🖥️ Executive Command Center
 
@@ -212,7 +201,6 @@ Includes
 
 ---
 
----
 
 ## 📨 Automated Dispatch Preview
 
@@ -227,6 +215,7 @@ This is the AI-generated municipal work order preview before dispatch, allowing 
 Once approved, CivicOS automatically dispatches an official municipal work order using the Gmail API, complete with issue details, department assignment, SLA, repair estimates, and actionable instructions.
 
 ![Live Gmail Dispatch](email.png)
+
 ---
 
 ## 💰 Cost of Inaction Engine
@@ -341,11 +330,6 @@ This architecture minimizes hallucinations while maintaining explainability.
 
 ---
 
-# Project Workflow
-
-![Workflow](docs/workflow.png)
-
----
 
 # Repository Structure
 
@@ -357,10 +341,7 @@ docs/
 README.md
 ```
 
----
 
-
-# Technical Architecture
 # Author
 
 Garvit Sharma
