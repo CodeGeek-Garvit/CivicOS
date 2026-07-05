@@ -1138,19 +1138,19 @@ export default function ExecutiveCommandCenter({
                     </div>
                     <div className="grid grid-cols-4 gap-1 text-[8px] text-slate-400 font-semibold mt-1 bg-slate-50 p-1.5 rounded">
                       <div>
-                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Critical</span>
-                        <span className="text-slate-900 font-bold">{dept.criticalCount}</span>
+                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Active Incidents</span>
+                        <span className="text-slate-900 font-bold">{dept.activeCount}</span>
                       </div>
                       <div>
-                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Avg Severity</span>
+                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Average Severity</span>
                         <span className="text-slate-900 font-bold">{dept.avgSeverity.toFixed(1)}</span>
                       </div>
                       <div>
-                        <span className="block text-[7px] font-bold text-slate-400 uppercase">90D Liability</span>
+                        <span className="block text-[7px] font-bold text-slate-400 uppercase">90-Day Liability</span>
                         <span className="text-slate-900 font-bold">{formatRupees(dept.liability90Day)}</span>
                       </div>
                       <div>
-                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Population</span>
+                        <span className="block text-[7px] font-bold text-slate-400 uppercase">Citizens Affected</span>
                         <span className="text-slate-900 font-bold">{dept.citizensAffected.toLocaleString()}</span>
                       </div>
                     </div>
