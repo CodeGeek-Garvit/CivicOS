@@ -552,7 +552,7 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
     });
 
     const newIssue = {
-      id: issue.id || `issue_${Math.random().toString(36).substring(2, 11)}`,
+      id: (!issue.id || issue.id === "temp_analysis") ? `issue_${Math.random().toString(36).substring(2, 11)}` : issue.id,
       issueType: issue.issueType || basicPerception.issueType || "other",
       title: issue.title || basicPerception.title || "Untitled Issue",
       description: issue.description || basicPerception.description || "",
@@ -572,6 +572,8 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       locationSource: issue.locationSource || (issue.location ? "GPS" : "DemoSeed"),
       markerSource: issue.markerSource || "FIRESTORE",
       isDemoMode: issue.isDemoMode ?? false,
+      manualReviewReason: issue.manualReviewReason || null,
+      manualReviewNote: issue.manualReviewNote || null,
 
       // Extended perception & structural parameters (Step 8)
       perceptionData: basicPerception,

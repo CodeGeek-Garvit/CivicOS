@@ -244,6 +244,21 @@ export default function App() {
             });
             console.log("[CIVICOS GIS LOG] Realtime update");
             setSavedIssuesList(list);
+            setRawAnalysisResult((prev) => {
+              if (prev) {
+                const prevId = (prev as any).id;
+                if (prevId && prevId !== "temp_analysis") {
+                  const updatedItem = list.find((item) => item.id === prevId);
+                  if (updatedItem) {
+                    const hasChanged = JSON.stringify(prev) !== JSON.stringify(updatedItem);
+                    if (hasChanged) {
+                      return updatedItem;
+                    }
+                  }
+                }
+              }
+              return prev;
+            });
           }, (err) => {
             console.error("🔗 [CIVICOS REALTIME] Firestore sync failed, falling back to HTTP polling:", err);
             if (isMounted) fetchIssues();
@@ -279,7 +294,23 @@ export default function App() {
       const response = await fetch("/api/issues");
       const data = await response.json();
       if (data.success) {
-        setSavedIssuesList(data.issues || []);
+        const issues = data.issues || [];
+        setSavedIssuesList(issues);
+        setRawAnalysisResult((prev) => {
+          if (prev) {
+            const prevId = (prev as any).id;
+            if (prevId && prevId !== "temp_analysis") {
+              const updatedItem = issues.find((item: any) => item.id === prevId);
+              if (updatedItem) {
+                const hasChanged = JSON.stringify(prev) !== JSON.stringify(updatedItem);
+                if (hasChanged) {
+                  return updatedItem;
+                }
+              }
+            }
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error("Failed to load issues ledger:", err);
@@ -302,6 +333,19 @@ export default function App() {
       manualReviewNote?: string;
     }
   ) => {
+    if (id === "temp_analysis") {
+      setRawAnalysisResult(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          status: newStatus,
+          ...extraData
+        };
+      });
+      console.log(`[CIVICOS LIFE SYNC] Local in-memory status updated for temp_analysis to ${newStatus}`);
+      return;
+    }
+
     try {
       const response = await fetch(`/api/issues/${id}`, {
         method: "PATCH",
@@ -442,7 +486,9 @@ export default function App() {
         locationSource: isLiveMode ? (GOOGLE_MAPS_KEY ? "ReverseGeocoded" : "GPS") : "DemoSeed",
         markerSource: isLiveMode ? "LIVE_UPLOAD" : "DEMO_DATA",
         isDemoMode: !isLiveMode,
-        status: "Submitted"
+        status: (analysisResult.status && analysisResult.status !== "Reported" && analysisResult.status !== "Submitted" && analysisResult.status !== "temp_analysis")
+          ? analysisResult.status
+          : "Submitted"
       }
     };
 
@@ -1140,24 +1186,15 @@ export default function App() {
                       >
                   <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden" id="analysis-result-card">
                     {/* Status Banner */}
-                    <div className={`px-6 py-4 flex items-center justify-between text-white ${analysisResult.isFallback ? "bg-rose-950" : "bg-indigo-900"}`} id="analysis-banner-header">
+                    <div className={`px-6 py-4 flex flex-wrap gap-4 items-center justify-between text-white ${analysisResult.isFallback ? "bg-rose-950" : "bg-indigo-900"}`} id="analysis-banner-header">
                       <div className="flex items-center space-x-2">
                         <Sparkles className={`h-5 w-5 ${analysisResult.isFallback ? "text-rose-400" : "text-indigo-300"}`} />
                         <span className="text-xs font-bold uppercase tracking-widest text-slate-200">
                           {analysisResult.isFallback ? "Local Diagnostic Backup" : "Gemini Structured Analysis"}
                         </span>
                       </div>
-                      {analysisResult.isFallback ? (
-                        <span className="text-[11px] font-extrabold bg-rose-500 text-white border border-rose-400 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm animate-pulse">
-                          <span className="h-2 w-2 rounded-full bg-white"></span>
-                          Fallback Analysis
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-extrabold bg-emerald-600 text-white border border-emerald-500 px-3 py-1 rounded-full flex items-center gap-1.5 uppercase font-sans shadow-sm">
-                          <span className="h-2 w-2 rounded-full bg-emerald-200 animate-ping"></span>
-                          Gemini Analysis
-                        </span>
-                      )}
+                      
+
                     </div>
 
                     <div className="p-6 space-y-6">
@@ -1239,20 +1276,28 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Review Decision Bar (Sprint 2 Moderation Sync) */}
-                      {analysisResult.id !== "temp_analysis" && (() => {
-                        const detailStatus = (analysisResult.status === "reported" || !analysisResult.status || analysisResult.status.toLowerCase() === "submitted")
+                      {/* Commissioner Decision Panel */}
+                      {(() => {
+                        const detailStatus = (analysisResult.status === "reported" || !analysisResult.status || analysisResult.status.toLowerCase() === "submitted" || analysisResult.status === "temp_analysis")
                           ? "Submitted"
                           : analysisResult.status;
-                        const isModerated = detailStatus === "Approved" || detailStatus === "Rejected" || detailStatus === "Manual Review";
+                        const isRegistered = !!(analysisResult as any).dispatch;
+                        const isModerated = !isRegistered
+                          ? false
+                          : (detailStatus === "Approved" || detailStatus === "Rejected" || detailStatus === "Manual Review");
 
                         return (
-                          <div className="border-y border-slate-100 py-5 space-y-3" id="detail-review-decision-bar">
+                          <div className="border-y border-slate-100 py-5 space-y-3" id="commissioner-decision-panel">
                             <div className="flex items-center justify-between">
                               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                Commissioner Moderation Workspace
+                                Commissioner Decision Panel
                               </h4>
-                              {isModerated ? (
+                              {!isRegistered ? (
+                                <span className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600"></span>
+                                  Pre-Registration Stage (Decision Editable)
+                                </span>
+                              ) : isModerated ? (
                                 <span className={`text-xs font-black uppercase flex items-center gap-1 ${
                                   detailStatus === "Approved" ? "text-emerald-600" :
                                   detailStatus === "Rejected" ? "text-rose-600" :
@@ -1261,74 +1306,35 @@ export default function App() {
                                   STATUS: {detailStatus === "Approved" ? "APPROVED ✓" : detailStatus === "Rejected" ? "REJECTED ❌" : "MANUAL REVIEW 🟡"} (Decision Locked)
                                 </span>
                               ) : (
-                                <span className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-600"></span>
-                                  Awaiting Moderation
+                                <span className="text-xs font-extrabold text-blue-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-blue-600"></span>
+                                  Awaiting Decision (Decision Editable)
                                 </span>
                               )}
                             </div>
 
-                            <div className="grid grid-cols-3 gap-3">
-                              <button
-                                disabled={isModerated}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateIssueStatus(analysisResult.id, "Approved");
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
-                                  detailStatus === "Approved"
-                                    ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                                    : isModerated
-                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
-                                      : "bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
-                                }`}
-                                title="Approve Issue"
-                              >
-                                <span>✅</span> Approve
-                              </button>
-
-                              <button
-                                disabled={isModerated}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setManualReviewTargetId(analysisResult.id);
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
-                                  detailStatus === "Manual Review"
-                                    ? "bg-amber-500 text-white border-amber-500 shadow-sm"
-                                    : isModerated
-                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
-                                      : "bg-white text-amber-600 border-amber-200 hover:bg-amber-50 hover:border-amber-300"
-                                }`}
-                                title="Route to Manual Review"
-                              >
-                                <span>🟡</span> Manual Review
-                              </button>
-
-                              <button
-                                disabled={isModerated}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUpdateIssueStatus(analysisResult.id, "Rejected");
-                                }}
-                                className={`flex items-center justify-center gap-1.5 py-3 px-4 text-xs font-extrabold rounded-xl border transition-all cursor-pointer ${
-                                  detailStatus === "Rejected"
-                                    ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-                                    : isModerated
-                                      ? "bg-slate-50 text-slate-400 border-slate-100 opacity-40 pointer-events-none"
-                                      : "bg-white text-rose-600 border-rose-200 hover:bg-rose-50 hover:border-rose-300"
-                                }`}
-                                title="Reject Issue"
-                              >
-                                <span>❌</span> Reject
-                              </button>
-                            </div>
-
-                            {detailStatus === "Manual Review" && analysisResult.manualReviewReason && (
-                              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-800 font-medium">
-                                <span className="font-extrabold">Manual Review Justification:</span> "{analysisResult.manualReviewReason}"
+                            <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-500 font-bold uppercase">Current Decision:</span>
+                                <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
+                                  detailStatus === "Approved" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                  detailStatus === "Rejected" ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                  detailStatus === "Manual Review" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                  "bg-slate-100 text-slate-600 border-slate-300"
+                                }`}>
+                                  {detailStatus === "Submitted" ? "Awaiting Decision" : detailStatus}
+                                </span>
                               </div>
-                            )}
+
+                              {detailStatus === "Manual Review" && analysisResult.manualReviewReason && (
+                                <div className="border-t border-slate-200/60 pt-3 text-xs text-slate-700">
+                                  <span className="font-extrabold text-amber-800 uppercase tracking-wider text-[10px] block mb-1">Review Justification:</span>
+                                  <p className="italic bg-white p-2 rounded-lg border border-slate-100 text-slate-600">
+                                    "{analysisResult.manualReviewReason}"
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}
