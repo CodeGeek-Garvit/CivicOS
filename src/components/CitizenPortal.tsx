@@ -116,6 +116,60 @@ interface CitizenPortalProps {
   onBackToSelector: () => void;
 }
 
+const getCitizenLevel = (points: number) => {
+  const levels = [
+    { name: "New Citizen", min: 0, max: 50 },          // Level 0
+    { name: "Community Volunteer", min: 50, max: 100 }, // Level 1
+    { name: "Community Reporter", min: 100, max: 200 }, // Level 2
+    { name: "Community Guardian", min: 200, max: 350 }, // Level 3
+    { name: "Civic Champion", min: 350, max: 500 },     // Level 4
+    { name: "City Champion", min: 500, max: 750 },      // Level 5
+    { name: "City Ambassador", min: 750, max: 1000 },   // Level 6
+    { name: "Municipal Hero", min: 1000, max: 1500 },   // Level 7
+    { name: "Civic Legend", min: 1500, max: 2000 },     // Level 8
+  ];
+
+  if (points < 2000) {
+    const lvlIdx = levels.findIndex(l => points >= l.min && points < l.max);
+    const lvl = lvlIdx === -1 ? 0 : lvlIdx;
+    const current = levels[lvl];
+    const range = current.max - current.min;
+    const progress = ((points - current.min) / range) * 100;
+    const nextLevelName = levels[lvl + 1] ? levels[lvl + 1].name : "Civic Legend (Tier 2)";
+    return {
+      level: lvl,
+      name: current.name,
+      min: current.min,
+      max: current.max,
+      progress: Math.min(100, Math.max(0, progress)),
+      nextLevel: nextLevelName,
+      pointsToNext: current.max - points
+    };
+  } else {
+    const lvl = 8 + Math.floor((points - 1500) / 500);
+    const min = 1500 + (lvl - 8) * 500;
+    const max = min + 500;
+    const progress = ((points - min) / 500) * 100;
+    const tier = lvl - 7;
+    return {
+      level: lvl,
+      name: `Civic Legend (Tier ${tier})`,
+      min: min,
+      max: max,
+      progress: Math.min(100, Math.max(0, progress)),
+      nextLevel: `Civic Legend (Tier ${tier + 1})`,
+      pointsToNext: max - points
+    };
+  }
+};
+
+const getWeekIdentifier = (d: Date) => {
+  const oneJan = new Date(d.getFullYear(), 0, 1);
+  const numberOfDays = Math.floor((d.getTime() - oneJan.getTime()) / (24 * 60 * 60 * 1000));
+  const weekNum = Math.ceil((d.getDay() + 1 + numberOfDays) / 7);
+  return `${d.getFullYear()}-W${weekNum}`;
+};
+
 export default function CitizenPortal({
   issues,
   isLiveMode,
@@ -141,10 +195,45 @@ export default function CitizenPortal({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Daily login & Weekly participation bonuses state
+  const [claimedDailyBonusDates, setClaimedDailyBonusDates] = useState<string[]>(() => {
+    const saved = localStorage.getItem("civicos_claimed_daily_bonus_days");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [claimedWeeklyBonusWeeks, setClaimedWeeklyBonusWeeks] = useState<string[]>(() => {
+    const saved = localStorage.getItem("civicos_claimed_weekly_bonus_weeks");
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Community rewards gamification state
   const [rewardPoints, setRewardPoints] = useState<number>(() => {
-    const saved = localStorage.getItem("civicos_rewards_points");
-    return saved ? parseInt(saved, 10) : 1280;
+    const saved = localStorage.getItem("civicos_rewards_points_v2");
+    if (saved) {
+      return parseInt(saved, 10);
+    }
+    // Compute initial points dynamically based on actual participation history (starts at 0 for new citizen)
+    const savedReports = localStorage.getItem("civicos_my_reported_ids");
+    const reports = savedReports ? JSON.parse(savedReports) : [];
+    
+    const savedVerified = localStorage.getItem("civicos_verified_list");
+    const verified = savedVerified ? JSON.parse(savedVerified) : {};
+
+    const savedDaily = localStorage.getItem("civicos_claimed_daily_bonus_days");
+    const dailyCount = savedDaily ? JSON.parse(savedDaily).length : 0;
+
+    const savedWeekly = localStorage.getItem("civicos_claimed_weekly_bonus_weeks");
+    const weeklyCount = savedWeekly ? JSON.parse(savedWeekly).length : 0;
+
+    let basePoints = reports.length * 50; // Report Submitted: +50
+
+    const verifiedIdsCount = Object.values(verified).filter(v => v === "verified").length;
+    basePoints += verifiedIdsCount * 25; // Community Verification: +25
+
+    basePoints += dailyCount * 5;
+    basePoints += weeklyCount * 100;
+
+    return basePoints;
   });
 
   const [verifiedList, setVerifiedList] = useState<Record<string, "verified" | "disputed" | null>>(() => {
@@ -167,7 +256,7 @@ export default function CitizenPortal({
   const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("civicos_rewards_points", rewardPoints.toString());
+    localStorage.setItem("civicos_rewards_points_v2", rewardPoints.toString());
   }, [rewardPoints]);
 
   useEffect(() => {
@@ -183,22 +272,53 @@ export default function CitizenPortal({
   const [highlightedBadgeId, setHighlightedBadgeId] = useState<string | null>(null);
   const [unlockedBadges, setUnlockedBadges] = useState<string[]>([]);
   
-  const getUnlockedBadgeIds = (reportedIds: string[], votes: Record<string, "verified" | "disputed" | null>) => {
+  const [levelUpCelebration, setLevelUpCelebration] = useState<{
+    level: number;
+    name: string;
+  } | null>(null);
+
+  const lastLevelRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const levelInfo = getCitizenLevel(rewardPoints);
+    if (lastLevelRef.current === null) {
+      lastLevelRef.current = levelInfo.level;
+    } else if (levelInfo.level > lastLevelRef.current) {
+      setLevelUpCelebration({
+        level: levelInfo.level,
+        name: levelInfo.name
+      });
+      lastLevelRef.current = levelInfo.level;
+    } else if (levelInfo.level < lastLevelRef.current) {
+      lastLevelRef.current = levelInfo.level;
+    }
+  }, [rewardPoints]);
+  
+  const getUnlockedBadgeIds = (reportedIds: string[], votes: Record<string, "verified" | "disputed" | null>, points: number) => {
+    const levelInfo = getCitizenLevel(points);
+    const lvl = levelInfo.level;
     const unlocked: string[] = [];
-    if (reportedIds.length >= 1) {
+
+    // guardian badge: Unlocked if Level >= 3 (Community Guardian) and has at least 1 report
+    if (lvl >= 3 && reportedIds.length >= 1) {
       unlocked.push("guardian");
     }
+
+    // contributor badge: Unlocked if Level >= 1 and has at least 3 verifications
     const verificationsCount = Object.values(votes).filter(v => v === "verified").length;
-    if (verificationsCount >= 3) {
+    if (lvl >= 1 && verificationsCount >= 3) {
       unlocked.push("contributor");
     }
+
+    // rapid badge: Unlocked if Level >= 4 and has high severity report
     const hasHighSeverityReport = reportedIds.some(id => {
       const iss = activeIssuesList.find(i => i.id === id);
       return iss && (iss.severity || 0) >= 8;
     });
-    if (hasHighSeverityReport) {
+    if (lvl >= 4 && hasHighSeverityReport) {
       unlocked.push("rapid");
     }
+
     return unlocked;
   };
 
@@ -207,7 +327,7 @@ export default function CitizenPortal({
 
   useEffect(() => {
     if (activeIssuesList.length > 0) {
-      const current = getUnlockedBadgeIds(myReportedIds, verifiedList);
+      const current = getUnlockedBadgeIds(myReportedIds, verifiedList, rewardPoints);
       
       if (isFirstLoadRef.current) {
         prevBadgesRef.current = current;
@@ -254,15 +374,87 @@ export default function CitizenPortal({
         setUnlockedBadges(current);
       }
     }
-  }, [myReportedIds, verifiedList, issues]);
+  }, [myReportedIds, verifiedList, issues, rewardPoints]);
+
+  // Dynamic Point Synchronization with actual participation history & issues state changes
+  const lastPointsRef = useRef<number>(rewardPoints);
+
+  useEffect(() => {
+    let points = myReportedIds.length * 50; // Report Submitted: +50
+
+    // Check if any reported issues have been Approved (+100) or Resolved (+75)
+    myReportedIds.forEach(id => {
+      const issue = activeIssuesList.find(i => i.id === id);
+      if (issue) {
+        const status = issue.status?.toLowerCase();
+        if (status === "approved") {
+          points += 100;
+        } else if (status === "resolved" || status === "completed" || status === "closed") {
+          points += 100; // Approved (+100)
+          points += 75;  // Resolved (+75)
+        }
+      }
+    });
+
+    // Verification cast: +25
+    const verifiedIds = Object.entries(verifiedList)
+      .filter(([_, val]) => val === "verified")
+      .map(([id, _]) => id);
+    points += verifiedIds.length * 25;
+
+    // Verification Confirmed by Community (3+ verifications or Approved/Resolved): +50
+    verifiedIds.forEach(id => {
+      const issue = activeIssuesList.find(i => i.id === id);
+      if (issue) {
+        const verifications = issue.verifications || 0;
+        const status = issue.status?.toLowerCase();
+        const isConfirmed = verifications >= 3 || status === "approved" || status === "resolved" || status === "completed" || status === "closed";
+        if (isConfirmed) {
+          points += 50;
+        }
+      }
+    });
+
+    points += claimedDailyBonusDates.length * 5;
+    points += claimedWeeklyBonusWeeks.length * 100;
+
+    if (points !== rewardPoints) {
+      const diff = points - rewardPoints;
+      // Show toast if points increased background-style
+      if (diff > 0 && lastPointsRef.current !== rewardPoints) {
+        let reason = "Civic Progress Updated";
+        if (diff === 100) reason = "Report Approved by Commissioner";
+        else if (diff === 75) reason = "Report Resolved by Field Crews";
+        else if (diff === 175) reason = "Report Approved & Resolved";
+        else if (diff === 50) reason = "Verification Confirmed by Community";
+
+        const newToast = {
+          id: Math.random().toString(),
+          points: diff,
+          message: reason
+        };
+        setToasts(prev => [...prev, newToast]);
+        setTimeout(() => {
+          setToasts(prev => prev.filter(t => t.id !== newToast.id));
+        }, 3000);
+      }
+      setRewardPoints(points);
+      localStorage.setItem("civicos_rewards_points_v2", points.toString());
+    }
+    lastPointsRef.current = points;
+  }, [activeIssuesList, myReportedIds, verifiedList, claimedDailyBonusDates, claimedWeeklyBonusWeeks, rewardPoints]);
 
   const addPoints = (amount: number, reason?: string) => {
-    setRewardPoints(prev => prev + amount);
+    setRewardPoints(prev => {
+      const nextPoints = prev + amount;
+      localStorage.setItem("civicos_rewards_points_v2", nextPoints.toString());
+      return nextPoints;
+    });
 
     let displayReason = reason;
     if (!displayReason) {
-      if (amount === 500) displayReason = "Issue Submitted Successfully";
-      else if (amount === 100) displayReason = "Community Issue Verified";
+      if (amount === 50) displayReason = "Report Submitted Successfully";
+      else if (amount === 25) displayReason = "Community Issue Verified";
       else if (amount === 10) displayReason = "Dispute Audit Contribution";
       else displayReason = "Community Points Earned";
     }
@@ -290,6 +482,28 @@ export default function CitizenPortal({
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== newToast.id));
     }, 3000);
+  };
+
+  const handleClaimDailyBonus = () => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    if (claimedDailyBonusDates.includes(todayStr)) return;
+
+    const updated = [...claimedDailyBonusDates, todayStr];
+    setClaimedDailyBonusDates(updated);
+    localStorage.setItem("civicos_claimed_daily_bonus_days", JSON.stringify(updated));
+
+    addPoints(5, "Daily Login Bonus");
+  };
+
+  const handleClaimWeeklyBonus = () => {
+    const currentWeekStr = getWeekIdentifier(new Date());
+    if (claimedWeeklyBonusWeeks.includes(currentWeekStr)) return;
+
+    const updated = [...claimedWeeklyBonusWeeks, currentWeekStr];
+    setClaimedWeeklyBonusWeeks(updated);
+    localStorage.setItem("civicos_claimed_weekly_bonus_weeks", JSON.stringify(updated));
+
+    addPoints(100, "Weekly Participation Bonus");
   };
 
   // Convert uploaded file to base64 (matching App.tsx)
@@ -443,7 +657,7 @@ export default function CitizenPortal({
       if (reportData.success && reportData.issue) {
         // Issue successfully submitted
         setMyReportedIds(prev => [...prev, reportData.issue.id]);
-        addPoints(500); // 500 points for reporting an issue!
+        addPoints(50); // Report Submitted: +50
         
         await delay(800);
         setSubmitSuccess(true);
@@ -482,7 +696,7 @@ export default function CitizenPortal({
 
     if (type === "verified") {
       nextVerifications += 1;
-      addPoints(100); // +100 points for verifying!
+      addPoints(25); // Community Verification: +25
     } else {
       nextDisputes += 1;
       addPoints(10); // +10 points for participating in dispute audit
@@ -938,7 +1152,7 @@ export default function CitizenPortal({
                     <Trophy className="h-6 w-6 text-yellow-300" />
                     <div>
                       <span className="text-[10px] uppercase font-black tracking-wider block text-white/70">Submission Reward</span>
-                      <span className="text-sm font-black">+500 Points Per Report</span>
+                      <span className="text-sm font-black">+50 Points Per Report</span>
                     </div>
                   </div>
                 </div>
@@ -1506,24 +1720,134 @@ export default function CitizenPortal({
               <div className="space-y-6">
                 
                 {/* Rewards Header Profile */}
-                <div className="bg-gradient-to-br from-slate-900 to-blue-950 rounded-3xl p-6 text-white shadow-xl flex flex-col sm:flex-row justify-between items-center gap-6">
-                  <div className="flex items-center gap-4 text-center sm:text-left flex-col sm:flex-row">
-                    <div className="h-16 w-16 bg-gradient-to-r from-blue-500 to-emerald-500 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-blue-500/10">
-                      C
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-black tracking-tight">Active Citizen Contributor</h3>
-                      <p className="text-xs text-slate-400 font-medium mt-0.5">Pune Municipal Corporation • Ward 12</p>
-                    </div>
-                  </div>
+                {(() => {
+                  const levelInfo = getCitizenLevel(rewardPoints);
+                  const levelNum = levelInfo.level;
+                  return (
+                    <div className="bg-gradient-to-br from-slate-900 to-blue-950 rounded-3xl p-6 text-white shadow-xl space-y-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-center gap-6">
+                        <div className="flex items-center gap-4 text-center sm:text-left flex-col sm:flex-row">
+                          <div className="h-16 w-16 bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 rounded-2xl flex items-center justify-center text-white text-2xl font-black shadow-lg shadow-blue-500/10 shrink-0">
+                            {levelInfo.name[0]}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 justify-center sm:justify-start">
+                              <h3 className="text-lg font-black tracking-tight">{levelInfo.name}</h3>
+                              <span className="text-[9px] font-extrabold uppercase bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 px-2.5 py-0.5 rounded-full tracking-wider">
+                                Level {levelNum}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400 font-medium mt-0.5">Pune Municipal Corporation • Ward 12</p>
+                          </div>
+                        </div>
 
-                  <div className="text-center sm:text-right border-t sm:border-t-0 border-white/10 pt-4 sm:pt-0 w-full sm:w-auto">
-                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Total Community Score</span>
-                    <span className="text-3xl font-black bg-gradient-to-r from-blue-400 to-emerald-300 bg-clip-text text-transparent">
-                      <AnimatedCounter value={rewardPoints} /> Points
-                    </span>
-                  </div>
-                </div>
+                        <div className="text-center sm:text-right border-t sm:border-t-0 border-white/10 pt-4 sm:pt-0 w-full sm:w-auto">
+                          <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 block">Total Community Score</span>
+                          <span className="text-3xl font-black bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-300 bg-clip-text text-transparent">
+                            <AnimatedCounter value={rewardPoints} /> Points
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Level Progress Bar */}
+                      <div className="border-t border-white/10 pt-4 space-y-2">
+                        <div className="flex justify-between items-center text-[11px] font-bold text-slate-300">
+                          <span>Progress to {levelInfo.nextLevel}</span>
+                          <span>
+                            {rewardPoints} / {levelInfo.max} Points
+                          </span>
+                        </div>
+                        <div className="h-3 w-full bg-white/10 rounded-full overflow-hidden border border-white/5 relative p-[1px]">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${levelInfo.progress}%` }}
+                            transition={{ duration: 1, ease: "easeOut" }}
+                            className="h-full bg-gradient-to-r from-blue-500 via-indigo-400 to-emerald-400 rounded-full shadow-[0_0_12px_rgba(59,130,246,0.5)]"
+                          />
+                        </div>
+                        <div className="flex justify-between items-center text-[9px] text-slate-400 font-mono">
+                          <span>{levelInfo.min} pts</span>
+                          <span>{levelInfo.max} pts</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Daily & Weekly Claimable Rewards */}
+                {(() => {
+                  const todayStr = new Date().toISOString().split("T")[0];
+                  const hasClaimedDailyToday = claimedDailyBonusDates.includes(todayStr);
+
+                  const currentWeekStr = getWeekIdentifier(new Date());
+                  const hasClaimedWeeklyThisWeek = claimedWeeklyBonusWeeks.includes(currentWeekStr);
+                  const hasParticipatedThisWeek = myReportedIds.length > 0 || Object.keys(verifiedList).length > 0;
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                      <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                        <Gift className="h-4 w-4 text-emerald-600" />
+                        Daily & Weekly Civic Claims
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Daily Login Bonus Card */}
+                        <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50/50 flex flex-col justify-between space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                              <span className="text-xs font-extrabold text-slate-800 block">Daily Login Bonus</span>
+                              <span className="text-[10px] text-slate-400 font-medium block">Claim your daily allowance of civic points</span>
+                            </div>
+                            <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg shrink-0">+5 Points</span>
+                          </div>
+                          <button
+                            onClick={handleClaimDailyBonus}
+                            disabled={hasClaimedDailyToday}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all text-center border cursor-pointer ${
+                              hasClaimedDailyToday
+                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                : "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm shadow-emerald-100"
+                            }`}
+                          >
+                            {hasClaimedDailyToday ? "Claimed Today ✓" : "Claim Daily Bonus"}
+                          </button>
+                        </div>
+
+                        {/* Weekly Participation Bonus Card */}
+                        <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50/50 flex flex-col justify-between space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                              <span className="text-xs font-extrabold text-slate-800 block">Weekly Participation Bonus</span>
+                              <span className="text-[10px] text-slate-400 font-medium block">Awarded for active reporting or verifying this week</span>
+                            </div>
+                            <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg shrink-0">+100 Points</span>
+                          </div>
+                          <button
+                            onClick={handleClaimWeeklyBonus}
+                            disabled={hasClaimedWeeklyThisWeek || !hasParticipatedThisWeek}
+                            className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition-all text-center border cursor-pointer ${
+                              hasClaimedWeeklyThisWeek
+                                ? "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed"
+                                : !hasParticipatedThisWeek
+                                  ? "bg-slate-50 text-slate-400 border-slate-200/60 cursor-not-allowed"
+                                  : "bg-blue-600 hover:bg-blue-700 text-white border-blue-600 shadow-sm shadow-blue-100"
+                            }`}
+                          >
+                            {hasClaimedWeeklyThisWeek 
+                              ? "Claimed This Week ✓" 
+                              : !hasParticipatedThisWeek
+                                ? "Requires 1+ Action This Week" 
+                                : "Claim Weekly Bonus"}
+                          </button>
+                          {!hasClaimedWeeklyThisWeek && (
+                            <span className="text-[9px] text-slate-400 font-semibold block text-center">
+                              Status: {hasParticipatedThisWeek ? "Eligible! 🌟" : "Submit a report or verify an issue to unlock"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Badges Section */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
@@ -1564,7 +1888,7 @@ export default function CitizenPortal({
                           </div>
                           {!isUnlocked && (
                             <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
-                              Progress: {myReportedIds.length}/1 reported
+                              Unlock: Level 3+ and {myReportedIds.length}/1 reported
                             </span>
                           )}
                         </div>
@@ -1602,7 +1926,7 @@ export default function CitizenPortal({
                           </div>
                           {!isUnlocked && (
                             <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
-                              Progress: {verificationsCount}/3 verifications
+                              Unlock: Level 1+ and {verificationsCount}/3 verified
                             </span>
                           )}
                         </div>
@@ -1639,7 +1963,7 @@ export default function CitizenPortal({
                           </div>
                           {!isUnlocked && (
                             <span className="text-[9px] text-slate-400 font-bold block mt-3 border-t border-slate-100 pt-2 font-mono">
-                              Unlock: Submit high severity issue (Sev 8+)
+                              Unlock: Level 4+ and Severity 8+ Report
                             </span>
                           )}
                         </div>
@@ -1651,24 +1975,36 @@ export default function CitizenPortal({
 
                 {/* Point System Rules */}
                 <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-3">
-                  <h4 className="text-sm font-extrabold text-slate-900">How to Earn Points</h4>
+                  <h4 className="text-sm font-extrabold text-slate-900">Civic Point System & Level Up Milestones</h4>
                   
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
-                      <span className="text-slate-600">Report a new civic issue with AI Vision evidence</span>
-                      <span className="text-emerald-600 font-bold">+500 Points</span>
+                      <span className="text-slate-600">Report Submitted (with AI Vision)</span>
+                      <span className="text-emerald-600 font-bold">+50 Points</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
-                      <span className="text-slate-600">Verify a nearby community issue report</span>
+                      <span className="text-slate-600">Report Approved by Commissioner</span>
                       <span className="text-emerald-600 font-bold">+100 Points</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
-                      <span className="text-slate-600">Vote on a dispute to support integrity audit</span>
-                      <span className="text-emerald-600 font-bold">+10 Points</span>
+                      <span className="text-slate-600">Community Verification Cast</span>
+                      <span className="text-emerald-600 font-bold">+25 Points</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
+                      <span className="text-slate-600">Verification Confirmed by Community (3+ votes)</span>
+                      <span className="text-emerald-600 font-bold">+50 Points</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
+                      <span className="text-slate-600">Issue Successfully Resolved by Crews</span>
+                      <span className="text-emerald-600 font-bold">+75 Points</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-medium border-b border-slate-50 pb-2">
+                      <span className="text-slate-600">Daily Login Reward</span>
+                      <span className="text-emerald-600 font-bold">+5 Points</span>
                     </div>
                     <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-slate-600">When your reported issue gets Resolved by crews</span>
-                      <span className="text-emerald-600 font-bold">+250 Points</span>
+                      <span className="text-slate-600">Weekly Active Participation Bonus</span>
+                      <span className="text-emerald-600 font-bold">+100 Points</span>
                     </div>
                   </div>
                 </div>
@@ -1680,6 +2016,85 @@ export default function CitizenPortal({
         </AnimatePresence>
 
       </main>
+
+      {/* LEVEL-UP CELEBRATION MODAL */}
+      <AnimatePresence>
+        {levelUpCelebration && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md"
+            onClick={() => setLevelUpCelebration(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20, rotate: -1 }}
+              animate={{ scale: 1, y: 0, rotate: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 15 }}
+              className="bg-gradient-to-b from-slate-900 to-indigo-950 text-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl border border-indigo-500/30 space-y-6 relative overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Sparkle background glow */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.15),transparent_60%)] pointer-events-none" />
+              
+              {/* Trophy Icon with animations */}
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.2, 1],
+                  rotate: [0, -10, 10, -10, 10, 0]
+                }}
+                transition={{ 
+                  duration: 1.5, 
+                  repeat: Infinity, 
+                  repeatDelay: 1.5,
+                  ease: "easeInOut"
+                }}
+                className="h-20 w-20 bg-gradient-to-br from-amber-400 via-yellow-300 to-amber-500 rounded-3xl mx-auto flex items-center justify-center text-4xl shadow-lg shadow-amber-500/20"
+              >
+                🏆
+              </motion.div>
+
+              <div className="space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 px-3 py-1 rounded-full">
+                  🏆 LEVEL UP!
+                </span>
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider pt-2">
+                  Congratulations!
+                </h3>
+                <p className="text-xs text-slate-400">You have reached</p>
+                <h2 className="text-xl font-black bg-gradient-to-r from-amber-200 via-indigo-200 to-emerald-200 bg-clip-text text-transparent uppercase tracking-tight py-1">
+                  {levelUpCelebration.name}
+                </h2>
+              </div>
+
+              {/* Status details */}
+              <div className="border-t border-indigo-500/20 pt-4 space-y-2 text-xs font-semibold text-left max-w-[240px] mx-auto text-slate-300">
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  <span>New Level {levelUpCelebration.level} Reached</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  <span>Civic Reputation Increased</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-emerald-400">✓</span>
+                  <span>New Milestone Badges Closer</span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={() => setLevelUpCelebration(null)}
+                className="w-full py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-extrabold text-sm rounded-2xl transition-all shadow-lg shadow-indigo-500/10 cursor-pointer"
+              >
+                Awesome!
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Footer */}
       <footer className="absolute bottom-4 left-0 right-0 text-center">
