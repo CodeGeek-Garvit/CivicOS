@@ -671,6 +671,27 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
     if (!isFirestoreAvailable || !db) {
       const idx = inMemoryIssues.findIndex(i => i.id === id);
       if (idx !== -1) {
+        const issue = inMemoryIssues[idx];
+        const updatedStatus = status !== undefined ? status : issue.status;
+        let dispatch = issue.dispatch;
+
+        if (updatedStatus === "Approved" && !dispatch) {
+          const sequenceNumber = inMemoryIssues.length + 1;
+          const mergedIssueForDispatch = {
+            ...issue,
+            ...(status !== undefined && { status }),
+            ...(afterImageUrl !== undefined && { afterImageUrl }),
+            ...(inspectionResult !== undefined && { inspectionResult }),
+            ...(verifiedBy !== undefined && { verifiedBy }),
+            ...(completionTime !== undefined && { completionTime }),
+            ...(verifications !== undefined && { verifications }),
+            ...(disputes !== undefined && { disputes }),
+            ...(manualReviewReason !== undefined && { manualReviewReason }),
+            ...(manualReviewNote !== undefined && { manualReviewNote }),
+          };
+          dispatch = runAutonomousDispatchPipeline(mergedIssueForDispatch, sequenceNumber);
+        }
+
         inMemoryIssues[idx] = {
           ...inMemoryIssues[idx],
           ...(status !== undefined && { status }),
@@ -682,6 +703,7 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
           ...(disputes !== undefined && { disputes }),
           ...(manualReviewReason !== undefined && { manualReviewReason }),
           ...(manualReviewNote !== undefined && { manualReviewNote }),
+          ...(dispatch !== undefined && { dispatch }),
         };
         return res.json({ success: true, issue: inMemoryIssues[idx] });
       }
@@ -696,6 +718,44 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
       }
 
       const currentData = docSnap.data();
+      const updatedStatus = status !== undefined ? status : currentData.status;
+      let dispatch = currentData.dispatch;
+
+      if (updatedStatus === "Approved" && !dispatch) {
+        let sequenceNumber = 1;
+        try {
+          const counterRef = doc(db, "registryCounters", "issues");
+          sequenceNumber = await runTransaction(db, async (transaction) => {
+            const counterDoc = await transaction.get(counterRef);
+            if (!counterDoc.exists()) {
+              transaction.set(counterRef, { current: 1 });
+              return 1;
+            }
+            const nextVal = (counterDoc.data().current || 0) + 1;
+            transaction.update(counterRef, { current: nextVal });
+            return nextVal;
+          });
+        } catch (e) {
+          console.warn("[CIVICOS SERVER SEQUENCE] Counter transaction failed, falling back to random:", e);
+          sequenceNumber = Math.floor(Math.random() * 1000) + 100;
+        }
+
+        const mergedIssueForDispatch = {
+          id,
+          ...currentData,
+          ...(status !== undefined && { status }),
+          ...(afterImageUrl !== undefined && { afterImageUrl }),
+          ...(inspectionResult !== undefined && { inspectionResult }),
+          ...(verifiedBy !== undefined && { verifiedBy }),
+          ...(completionTime !== undefined && { completionTime }),
+          ...(verifications !== undefined && { verifications }),
+          ...(disputes !== undefined && { disputes }),
+          ...(manualReviewReason !== undefined && { manualReviewReason }),
+          ...(manualReviewNote !== undefined && { manualReviewNote }),
+        };
+        dispatch = runAutonomousDispatchPipeline(mergedIssueForDispatch, sequenceNumber);
+      }
+
       const updatedData = {
         ...currentData,
         ...(status !== undefined && { status }),
@@ -707,6 +767,7 @@ export function registerIssuesRoutes(app: any, context: { db: any; isFirestoreAv
         ...(disputes !== undefined && { disputes }),
         ...(manualReviewReason !== undefined && { manualReviewReason }),
         ...(manualReviewNote !== undefined && { manualReviewNote }),
+        ...(dispatch !== undefined && { dispatch }),
       };
 
       await setDoc(docRef, updatedData);
