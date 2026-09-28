@@ -65,6 +65,7 @@ function MapDashboardContent({
 }: MapDashboardProps) {
   const map = useMap();
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [activeDatasetView, setActiveDatasetView] = useState<"all" | "demo" | "live">("all");
   const [activeWardFilter, setActiveWardFilter] = useState<string | null>(null);
   const [activeTypeFilter, setActiveTypeFilter] = useState<string | null>(null);
   const [activeSeverityFilter, setActiveSeverityFilter] = useState<string | null>(null); // "all" | "critical" | "high" | "low"
@@ -403,17 +404,50 @@ function MapDashboardContent({
     };
   }, [issues]);
 
+  // Fit map viewport to visible markers
+  const fitToMarkers = () => {
+    if (!map) return;
+    const validMarkers = filteredIssues.filter(i => {
+      const lat = Number(i.location?.latitude);
+      const lng = Number(i.location?.longitude);
+      return !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0);
+    });
+    if (validMarkers.length === 0) {
+      map.setCenter(defaultCenter);
+      map.setZoom(12);
+      return;
+    }
+    if (validMarkers.length === 1) {
+      map.setCenter({
+        lat: Number(validMarkers[0].location?.latitude),
+        lng: Number(validMarkers[0].location?.longitude)
+      });
+      map.setZoom(15);
+      return;
+    }
+    if (typeof google !== "undefined" && google.maps) {
+      const bounds = new google.maps.LatLngBounds();
+      validMarkers.forEach(i => {
+        bounds.extend({
+          lat: Number(i.location?.latitude),
+          lng: Number(i.location?.longitude)
+        });
+      });
+      map.fitBounds(bounds, { top: 60, bottom: 60, left: 60, right: 60 });
+    }
+  };
+
   // Center map on live location or default center on load or toggle
   useEffect(() => {
     if (!map) return;
-    if (isLiveMode && userLocation && userLocation.latitude != null && userLocation.longitude != null) {
+    if (activeDatasetView === "live" && userLocation && userLocation.latitude != null && userLocation.longitude != null) {
       map.setCenter({ lat: userLocation.latitude, lng: userLocation.longitude });
       map.setZoom(13);
     } else {
       map.setCenter(defaultCenter);
       map.setZoom(12);
     }
-  }, [map, isLiveMode, userLocation]);
+  }, [map, activeDatasetView, isLiveMode, userLocation]);
 
   // Live Issue Highlight: Detect newly uploaded issue, pan map, zoom, and select/highlight it
   useEffect(() => {
@@ -421,8 +455,8 @@ function MapDashboardContent({
 
     const targetIssue = issues.find(i => i.id === newlyUploadedIssueId);
     if (targetIssue && targetIssue.location && targetIssue.location.latitude != null && targetIssue.location.longitude != null) {
-      const lat = targetIssue.location.latitude;
-      const lng = targetIssue.location.longitude;
+      const lat = Number(targetIssue.location.latitude);
+      const lng = Number(targetIssue.location.longitude);
 
       map.setCenter({ lat, lng });
       map.setZoom(15);
@@ -484,16 +518,24 @@ function MapDashboardContent({
     return issues.filter(i => i.isDemoMode === true || i.id.startsWith("issue_mock_"));
   }, [issues]);
 
-  // 2. Active issues list based on current Mode with robust deduplication by ID
+  // 2. Active issues list based on user selection or smart fallback
   const activeIssuesList = useMemo(() => {
-    const rawList = isLiveMode ? liveIssues : demoIssues;
+    let rawList: SavedIssue[];
+    if (activeDatasetView === "live") {
+      rawList = liveIssues.length > 0 ? liveIssues : issues;
+    } else if (activeDatasetView === "demo") {
+      rawList = demoIssues.length > 0 ? demoIssues : issues;
+    } else {
+      // "all" view: show all issues with valid coordinates
+      rawList = issues.length > 0 ? issues : demoIssues;
+    }
     const seen = new Set<string>();
     return rawList.filter(item => {
       if (!item.id || seen.has(item.id)) return false;
       seen.add(item.id);
       return true;
     });
-  }, [isLiveMode, liveIssues, demoIssues]);
+  }, [activeDatasetView, liveIssues, demoIssues, issues]);
 
   // 3. Stats based on current Mode
   const stats = useMemo(() => {
@@ -514,17 +556,17 @@ function MapDashboardContent({
 
   // Dynamic Wards/Regions list based on current Mode
   const activeWardsList = useMemo(() => {
-    if (!isLiveMode) {
+    if (activeDatasetView === "demo") {
       return ["Shivajinagar", "Kothrud", "Viman Nagar", "Hadapsar"];
     }
     const uniqueWards = new Set<string>();
-    liveIssues.forEach(issue => {
+    activeIssuesList.forEach(issue => {
       if (issue.ward) uniqueWards.add(issue.ward);
       else if (issue.city) uniqueWards.add(issue.city);
     });
     const list = Array.from(uniqueWards);
-    return list.length > 0 ? list : [];
-  }, [isLiveMode, liveIssues]);
+    return list.length > 0 ? list : ["Shivajinagar", "Kothrud", "Viman Nagar", "Hadapsar"];
+  }, [activeDatasetView, activeIssuesList]);
 
   // 4. Filter issues based on UI selections and deduplicate
   const filteredIssues = useMemo(() => {
@@ -533,7 +575,9 @@ function MapDashboardContent({
       if (!issue.id || seenIds.has(issue.id)) return false;
 
       // Exclude issues without valid coordinates from map markers
-      if (!issue.location || issue.location.latitude == null || issue.location.longitude == null) {
+      const lat = Number(issue.location?.latitude);
+      const lng = Number(issue.location?.longitude);
+      if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
         return false;
       }
 
@@ -874,8 +918,8 @@ function MapDashboardContent({
       setActiveWardFilter(null);
     } else {
       setActiveWardFilter(ward);
-      // Center map on the ward if in Demo Mode and has center defined
-      if (!isLiveMode && WARD_CENTERS[ward] && map) {
+      // Center map on the ward if has center defined
+      if (WARD_CENTERS[ward] && map) {
         map.setCenter(WARD_CENTERS[ward]);
         map.setZoom(14);
       }
@@ -1529,16 +1573,99 @@ function MapDashboardContent({
       {/* RIGHT COLUMN: Map Frame (8 cols) */}
       <div className="xl:col-span-8 bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-hidden relative flex flex-col h-full" id="map-dashboard-canvas">
         
-        {/* Floating Live Status Chip */}
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-slate-950/80 backdrop-blur border border-slate-700/50 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2">
-          <span className={`h-2 w-2 rounded-full ${isLiveMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
-          <span className="text-[10px] font-bold text-white tracking-wider uppercase">
-            {isLiveMode ? "LIVE GIS ACTIVE" : "DEMO GIS ACTIVE"}
-          </span>
-          <span className="text-[10px] text-slate-400">|</span>
-          <span className="text-[10px] font-bold text-slate-300">
-            {filteredIssues.length} active markers
-          </span>
+        {/* Floating Live Status & Dataset Control Bar */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-slate-950/90 backdrop-blur-md border border-slate-700/60 rounded-2xl p-1.5 shadow-2xl flex flex-wrap items-center justify-center gap-1.5 max-w-[95%]">
+          {/* Mode Switcher Buttons */}
+          <div className="flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-800">
+            <button
+              onClick={() => {
+                setActiveDatasetView("all");
+                if (map) { map.setCenter(defaultCenter); map.setZoom(12); }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                activeDatasetView === "all"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              All ({issues.length})
+            </button>
+            <button
+              onClick={() => {
+                setActiveDatasetView("demo");
+                if (map) { map.setCenter(defaultCenter); map.setZoom(12); }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeDatasetView === "demo"
+                  ? "bg-amber-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
+              Pune Demo ({demoIssues.length})
+            </button>
+            <button
+              onClick={() => {
+                setActiveDatasetView("live");
+                if (liveIssues.length > 0) {
+                  fitToMarkers();
+                } else if (userLocation) {
+                  map?.setCenter({ lat: userLocation.latitude, lng: userLocation.longitude });
+                }
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeDatasetView === "live"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Live GIS ({liveIssues.length})
+            </button>
+          </div>
+
+          <span className="text-slate-600 hidden sm:inline">|</span>
+
+          {/* Marker Severity Counter */}
+          <div className="flex items-center gap-1.5 px-2 text-[10px] font-bold text-slate-300">
+            <span className="flex items-center gap-1" title="Critical Severity (Red)">
+              <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+              <span>{stats.critical}</span>
+            </span>
+            <span className="flex items-center gap-1" title="High Severity (Amber)">
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+              <span>{stats.high}</span>
+            </span>
+            <span className="flex items-center gap-1" title="Low/Moderate Severity (Green)">
+              <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+              <span>{stats.low}</span>
+            </span>
+            <span className="text-slate-500">({filteredIssues.length} visible)</span>
+          </div>
+
+          <span className="text-slate-600 hidden sm:inline">|</span>
+
+          {/* Quick Fit / Recenter Button */}
+          <button
+            onClick={fitToMarkers}
+            title="Focus and frame visible markers on map"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold transition-all cursor-pointer border border-slate-700 hover:border-slate-600"
+          >
+            <MapPin className="h-3 w-3 text-indigo-400" />
+            <span>Focus Markers</span>
+          </button>
+
+          {/* Refresh Data Button */}
+          {onRefresh && (
+            <button
+              onClick={() => onRefresh()}
+              title="Refresh incident ledger"
+              disabled={isLoading}
+              className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin text-indigo-400" : ""}`} />
+            </button>
+          )}
         </div>
 
         {/* Map Core Canvas */}
@@ -1554,8 +1681,8 @@ function MapDashboardContent({
             style={{ width: "100%", height: "100%" }}
           >
             {filteredIssues.map((issue) => {
-              const lat = issue.location?.latitude || defaultCenter.lat;
-              const lng = issue.location?.longitude || defaultCenter.lng;
+              const lat = Number(issue.location?.latitude) || defaultCenter.lat;
+              const lng = Number(issue.location?.longitude) || defaultCenter.lng;
               const colorConfig = getMarkerColors(issue.severity);
               const isNewlyUploaded = issue.id === newlyUploadedIssueId;
 
@@ -1565,7 +1692,7 @@ function MapDashboardContent({
                   position={{ lat, lng }}
                   onClick={() => setSelectedIssueId(issue.id === selectedIssueId ? null : issue.id)}
                 >
-                  <div className={isNewlyUploaded ? "animate-bounce scale-125 transition-all duration-300 relative z-50" : ""}>
+                  <div className={isNewlyUploaded ? "animate-bounce scale-125 transition-all duration-300 relative z-50 cursor-pointer" : "cursor-pointer transition-transform hover:scale-110"}>
                     <Pin 
                       background={colorConfig.background} 
                       borderColor="#ffffff" 
@@ -1584,8 +1711,8 @@ function MapDashboardContent({
             {selectedIssue && (
               <InfoWindow
                 position={{
-                  lat: selectedIssue.location?.latitude || defaultCenter.lat,
-                  lng: selectedIssue.location?.longitude || defaultCenter.lng
+                  lat: Number(selectedIssue.location?.latitude) || defaultCenter.lat,
+                  lng: Number(selectedIssue.location?.longitude) || defaultCenter.lng
                 }}
                 onCloseClick={() => setSelectedIssueId(null)}
                 maxWidth={320}
@@ -1722,7 +1849,7 @@ export default function MapDashboard(props: MapDashboardProps) {
   }
 
   return (
-    <APIProvider apiKey={API_KEY} version="weekly" libraries={["places"]}>
+    <APIProvider apiKey={API_KEY} version="weekly" libraries={["places", "marker"]}>
       <MapDashboardContent {...props} />
     </APIProvider>
   );
